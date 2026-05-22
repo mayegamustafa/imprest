@@ -28,6 +28,58 @@ const express = require('express')
 const session = require('express-session')
 const multer = require('multer')
 const { createProxyMiddleware } = require('http-proxy-middleware')
+const Database = require('better-sqlite3')
+
+// ─── SQLite-backed session store (uses better-sqlite3, already a dependency) ──
+function makeSQLiteSessionStore(Store) {
+  return class SQLiteStore extends Store {
+    constructor(options = {}) {
+      super(options)
+      const dataDir = process.env.IMPREST_DATA_DIR || path.join(os.homedir(), '.imprest-fms')
+      const dbPath = path.join(dataDir, 'sessions.db')
+      fs.mkdirSync(dataDir, { recursive: true })
+      this._db = new Database(dbPath)
+      this._db.pragma('journal_mode = WAL')
+      this._db.exec(`
+        CREATE TABLE IF NOT EXISTS sessions (
+          sid     TEXT PRIMARY KEY,
+          data    TEXT    NOT NULL,
+          expires INTEGER NOT NULL
+        )
+      `)
+      // Prune expired rows every 15 minutes — .unref() so it won't block shutdown
+      setInterval(() => {
+        try { this._db.prepare('DELETE FROM sessions WHERE expires <= ?').run(Date.now()) } catch {}
+      }, 15 * 60 * 1000).unref()
+    }
+    get(sid, cb) {
+      try {
+        const row = this._db.prepare('SELECT data, expires FROM sessions WHERE sid = ?').get(sid)
+        if (!row) return cb(null, null)
+        if (row.expires <= Date.now()) {
+          this._db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid)
+          return cb(null, null)
+        }
+        cb(null, JSON.parse(row.data))
+      } catch (err) { cb(err) }
+    }
+    set(sid, sessionData, cb) {
+      try {
+        const ttl = sessionData.cookie?.maxAge || 7 * 24 * 60 * 60 * 1000
+        const expires = Date.now() + ttl
+        this._db.prepare(
+          'INSERT OR REPLACE INTO sessions (sid, data, expires) VALUES (?, ?, ?)'
+        ).run(sid, JSON.stringify(sessionData), expires)
+        cb(null)
+      } catch (err) { cb(err) }
+    }
+    destroy(sid, cb) {
+      try { this._db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid); cb(null) }
+      catch (err) { cb(err) }
+    }
+    touch(sid, sessionData, cb) { this.set(sid, sessionData, cb) }
+  }
+}
 
 // ─── Fail loud, not silent ───────────────────────────────────────────────────
 process.on('uncaughtException', (err) => {
@@ -156,6 +208,7 @@ const PORT = Number(process.env.PORT) || 3001
 app.use(express.json({ limit: '50mb' }))
 
 app.use(session({
+  store: new (makeSQLiteSessionStore(session.Store))(),
   secret: process.env.SESSION_SECRET || 'imprest-fms-dev-secret-change-in-production',
   name: 'imprest.sid',
   resave: false,
@@ -164,7 +217,8 @@ app.use(session({
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,  // 7 days
-    secure: false,  // set to true if behind HTTPS
+    // Railway terminates TLS, so mark cookies secure in any deployed environment
+    secure: !!(process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production'),
   },
 }))
 
