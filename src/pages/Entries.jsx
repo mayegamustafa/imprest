@@ -14,7 +14,7 @@ const PURPOSE_PREFIX = 'Payment for '
 
 export default function Entries() {
   const navigate = useNavigate()
-  const { activeCycleId, setActiveCycleId, categories, terms, notify } = useAppStore()
+  const { activeCycleId, setActiveCycleId, categories, terms, notify, refreshTerms } = useAppStore()
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
@@ -78,6 +78,7 @@ export default function Entries() {
       )
       setShowImportModal(false)
       loadEntries()
+      refreshTerms()
     } catch (err) { notify(err.message, 'error') }
     finally { setImporting(false) }
   }
@@ -263,6 +264,7 @@ export default function Entries() {
       }
       setShowModal(false)
       loadEntries()
+      refreshTerms()
     } catch (err) {
       notify(err.message, 'error')
     } finally {
@@ -276,6 +278,7 @@ export default function Entries() {
       await window.electronAPI.deleteEntry(id)
       notify('Entry deleted')
       loadEntries()
+      refreshTerms()
     } catch (err) {
       notify(err.message, 'error')
     }
