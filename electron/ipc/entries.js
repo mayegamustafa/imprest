@@ -168,6 +168,19 @@ function validateSplitsRequired(splits, amount, balanceBack = 0) {
   }
 }
 
+// ─── Renumber all entries in a cycle by date order ───────────────────────────
+// Two-pass to avoid UNIQUE(cycle_id, voucher_number) conflicts mid-update.
+function renumberCycle(db, cycle_id) {
+  db.transaction(() => {
+    // Pass 1: use negative row-id as temporary unique placeholders
+    db.prepare('UPDATE entries SET voucher_number = -id WHERE cycle_id = ?').run(cycle_id)
+    // Pass 2: assign 1, 2, 3… ordered by date then id
+    const rows = db.prepare('SELECT id FROM entries WHERE cycle_id = ? ORDER BY date, id').all(cycle_id)
+    const stmt = db.prepare('UPDATE entries SET voucher_number = ? WHERE id = ?')
+    rows.forEach((row, idx) => stmt.run(idx + 1, row.id))
+  })()
+}
+
 function registerEntriesHandlers(ipcMain) {
   ipcMain.handle('entries:getByCycle', (event, cycleId) => {
     const db = getDatabase()
@@ -209,9 +222,10 @@ function registerEntriesHandlers(ipcMain) {
     }
     validateSplitsRequired(splits, amount, balanceBack)
 
-    // Auto voucher number: next in sequence for this cycle
+    // Voucher number: use custom if provided, otherwise temp MAX+1 (renumber will fix order)
+    const customVoucher = data.voucher_number ? Number(data.voucher_number) : 0
     const maxVoucher = db.prepare('SELECT MAX(voucher_number) as m FROM entries WHERE cycle_id=?').get(cycle_id)
-    const voucherNumber = (maxVoucher.m ?? 0) + 1
+    const voucherNumber = customVoucher > 0 ? customVoucher : (maxVoucher.m ?? 0) + 1
 
     const insertEntry = db.prepare(`
       INSERT INTO entries (cycle_id, voucher_number, date, payee, purpose, amount, balance_back)
@@ -233,7 +247,10 @@ function registerEntriesHandlers(ipcMain) {
     })
 
     const entryId = run()
-    return { id: entryId, voucher_number: voucherNumber, success: true }
+    // If no custom number, renumber the whole cycle by date so the new entry
+    // slots into the correct position regardless of insertion order.
+    if (!customVoucher) renumberCycle(db, cycle_id)
+    return { id: entryId, success: true }
   })
 
   ipcMain.handle('entries:update', (event, id, data) => {
@@ -256,13 +273,22 @@ function registerEntriesHandlers(ipcMain) {
     validateSplitsRequired(splits, amount, balanceBack)
 
     const old = db.prepare('SELECT * FROM entries WHERE id=?').get(id)
+    const customVoucher = data.voucher_number ? Number(data.voucher_number) : 0
 
     const run = db.transaction(() => {
-      db.prepare(`
-        UPDATE entries
-        SET date=?, payee=?, purpose=?, amount=?, balance_back=?, updated_at=CURRENT_TIMESTAMP
-        WHERE id=?
-      `).run(date, payee.trim(), purpose.trim(), amount, balanceBack, id)
+      if (customVoucher > 0) {
+        db.prepare(`
+          UPDATE entries
+          SET date=?, payee=?, purpose=?, amount=?, balance_back=?, voucher_number=?, updated_at=CURRENT_TIMESTAMP
+          WHERE id=?
+        `).run(date, payee.trim(), purpose.trim(), amount, balanceBack, customVoucher, id)
+      } else {
+        db.prepare(`
+          UPDATE entries
+          SET date=?, payee=?, purpose=?, amount=?, balance_back=?, updated_at=CURRENT_TIMESTAMP
+          WHERE id=?
+        `).run(date, payee.trim(), purpose.trim(), amount, balanceBack, id)
+      }
 
       // Replace splits
       db.prepare('DELETE FROM entry_category_splits WHERE entry_id=?').run(id)
@@ -274,6 +300,8 @@ function registerEntriesHandlers(ipcMain) {
     })
 
     run()
+    // If no custom number was set, renumber by date (handles date changes moving an entry's position)
+    if (!customVoucher) renumberCycle(db, old.cycle_id)
     return { success: true }
   })
 
@@ -286,6 +314,7 @@ function registerEntriesHandlers(ipcMain) {
     // Splits deleted via ON DELETE CASCADE
     db.prepare('DELETE FROM entries WHERE id=?').run(id)
     audit(db, 'entries', id, 'DELETE', old, null)
+    renumberCycle(db, old.cycle_id)
     return { success: true }
   })
 
@@ -338,6 +367,8 @@ function registerEntriesHandlers(ipcMain) {
         }
       })
     })()
+    // Renumber all entries in date order now that bulk rows are committed
+    renumberCycle(db, cycle_id)
     return { inserted, errors }
   })
 }

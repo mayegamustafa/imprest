@@ -39,6 +39,7 @@ export default function Entries() {
     purpose: PURPOSE_PREFIX,
     amount: '',
     balance_back: '',
+    voucher_number: '',
     splits: {},               // multi-category mode
     single_category_id: null, // single-category mode
     multi_mode: false,
@@ -155,6 +156,7 @@ export default function Entries() {
       purpose: PURPOSE_PREFIX,
       amount: '',
       balance_back: '',
+      voucher_number: '',
       splits: {},
       single_category_id: null,
       multi_mode: false,
@@ -177,6 +179,7 @@ export default function Entries() {
       purpose: entry.purpose,
       amount: String(entry.amount),
       balance_back: entry.balance_back ? String(entry.balance_back) : '',
+      voucher_number: String(entry.voucher_number),
       splits: splitsMap,
       // Default to single-category if entry has 0 or 1 split
       single_category_id: splitCount === 1 ? entry.splits[0].category_id : null,
@@ -253,6 +256,7 @@ export default function Entries() {
         amount: formAmount,
         balance_back: formBalanceBack || 0,
         splits,
+        ...(form.voucher_number ? { voucher_number: Number(form.voucher_number) } : {}),
       }
 
       if (editEntry) {
@@ -611,6 +615,14 @@ export default function Entries() {
               onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
               error={errors.amount}
               required
+            />
+            <Input
+              label="Voucher No. (optional)"
+              type="number"
+              placeholder="Auto"
+              value={form.voucher_number}
+              onChange={e => setForm(f => ({ ...f, voucher_number: e.target.value }))}
+              hint="Leave blank to auto-assign by date order"
             />
             <Input
               label="Payee Name"
