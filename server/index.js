@@ -43,6 +43,7 @@ process.on('unhandledRejection', (err) => {
 
 const { initDatabase, closeDatabase, getDbPath } = require('../electron/db/connection')
 const { runWithSession } = require('../electron/lib/session-context')
+const { bearerAuthMiddleware, signToken } = require('../electron/lib/jwt')
 const { generatePDF, generateExcel } = require('../electron/ipc/reports')
 const { requireRole } = require('../electron/ipc/auth')
 
@@ -167,10 +168,28 @@ app.use(session({
   },
 }))
 
+// Accept bearer JWTs as an alternative to cookie sessions. Runs AFTER
+// express-session so cookie auth still works; bearer only fills in when
+// there's no cookie session.
+app.use(bearerAuthMiddleware())
+
 // Bridge each request's session into the AsyncLocalStorage context
 app.use((req, res, next) => {
   // express-session populates req.session — we use it directly as our store
   runWithSession(req.session, () => next())
+})
+
+// ─── /api/auth/token — mint a JWT for the current cookie session ────────────
+// Useful when a long-lived bearer token is needed (sync engine, automation).
+app.post('/api/auth/token', (req, res) => {
+  const user = req.session?.user
+  if (!user) return res.status(401).json({ error: 'Not authenticated' })
+  try {
+    const token = signToken(user, { expiresIn: req.body?.expiresIn || '30d' })
+    res.json({ token, expiresIn: req.body?.expiresIn || '30d' })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // ─── /api/health ─────────────────────────────────────────────────────────────

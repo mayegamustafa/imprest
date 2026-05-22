@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs')
 const { getDatabase } = require('../db/connection')
 const { currentSession } = require('../lib/session-context')
+const { signToken } = require('../lib/jwt')
 
 // ─── Session helpers (work for both desktop & per-request HTTP sessions) ─────
 function getCurrentUser() {
@@ -53,7 +54,12 @@ function registerAuthHandlers(ipcMain) {
     db.prepare('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').run(user.id)
     currentSession().user = user
 
-    return { success: true, user: publicUser(user) }
+    // Issue a JWT alongside the session — clients that want stateless
+    // auth (sync engine, mobile, curl) can store and use this; web/desktop
+    // UIs ignore it and rely on the cookie session.
+    const token = signToken(user)
+
+    return { success: true, user: publicUser(user), token }
   })
 
   ipcMain.handle('auth:logout', () => {
