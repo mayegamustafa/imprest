@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background text-ink font-sans text-base;
+    user-select: none;
+  }
+
+  input, textarea, select {
+    user-select: text;
+  }
+
+  * {
+    outline-offset: 2px;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-1;
+  }
+}
+
+@layer components {
+  /* Financial table styles */
+  .fin-table {
+    @apply w-full border-collapse text-sm;
+  }
+
+  .fin-table th {
+    @apply bg-gray-50 border border-border text-ink text-xs font-semibold uppercase tracking-wide px-3 py-2 text-left;
+  }
+
+  .fin-table td {
+    @apply border border-border px-3 py-2 text-sm;
+  }
+
+  .fin-table tr:hover td {
+    @apply bg-accent-light/40;
+  }
+
+  .fin-table td.money {
+    @apply text-right font-mono tabular-nums;
+  }
+
+  /* Sidebar nav item */
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-2.5 rounded text-sidebar-text text-sm cursor-pointer transition-colors duration-100;
+  }
+
+  .nav-item:hover {
+    @apply bg-sidebar-hover text-white;
+  }
+
+  .nav-item.active {
+    @apply bg-sidebar-active text-white border-l-2 border-accent;
+  }
+
+  /* Card */
+  .card {
+    @apply bg-surface rounded-md shadow-card border border-border p-5;
+  }
+
+  /* Summary stat card */
+  .stat-card {
+    @apply bg-surface border border-border rounded-md p-4 shadow-card;
+  }
+
+  /* Form field */
+  .field-label {
+    @apply block text-xs font-semibold text-ink-secondary uppercase tracking-wide mb-1;
+  }
+
+  .field-input {
+    @apply block w-full border border-border rounded px-3 py-1.5 text-sm text-ink bg-surface
+           placeholder:text-ink-muted
+           focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30
+           disabled:bg-gray-50 disabled:text-ink-secondary disabled:cursor-not-allowed
+           transition-colors duration-100;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border-strong rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-muted;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  .text-money {
+    @apply font-mono tabular-nums text-right;
+  }
+}

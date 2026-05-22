@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build artifacts
+dist/
+dist-electron/
+build/
+out/
+*.tsbuildinfo
+
+# Native compiled artifacts (rebuilt per platform)
+*.node
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Editor
+.vscode/
+.idea/
+*.code-workspace
+
+# Env + secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Logs + temp
+*.log
+npm-debug.log*
+yarn-error.log*
+.npm/
+*.tmp
+tmp/
+
+# Test artifacts
+coverage/
+.nyc_output/
+
+# Local app data (in case devs place it inside repo)
+.imprest-fms/
+imprest.db
+imprest.db-*
+*.sqlite3
+*.sqlite3-journal
+
+# Electron-builder publish state
+.electron-builder/
+electron-builder-cache/
+
+# Puppeteer downloaded browser
+.cache/
+
+# Misc
+.husky/

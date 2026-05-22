@@ -1,0 +1,51 @@
+appId: com.imprestfms.app
+productName: Imprest FMS
+copyright: "Copyright © 2025 SIR APOLLO KAGGWA BPS"
+
+directories:
+  output: dist-electron
+
+files:
+  - dist/**/*
+  - electron/**/*
+  - "!electron/db/*.sqlite3"
+
+extraResources:
+  - from: electron/db/schema.sql
+    to: schema.sql
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icon.png
+
+linux:
+  target:
+    - AppImage
+    - deb
+  icon: assets/icon.svg
+  category: Office
+  description: Imprest Financial Management System
+
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Imprest FMS
+  installerIcon: assets/icon.png
+  uninstallerIcon: assets/icon.png
+
+asar: true

@@ -1,0 +1,99 @@
+{
+  "name": "imprest-fms",
+  "version": "1.0.0",
+  "description": "Imprest Financial Management System for SIR APOLLO KAGGWA BOARDING PRIMARY SCHOOL",
+  "main": "electron/main.js",
+  "scripts": {
+    "predev": "npm run cleanup --silent",
+    "dev": "npm run rebuild:electron --silent && concurrently -k -n vite,electron -c blue,green \"npm run dev:vite\" \"npm run dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "wait-on http://localhost:5173 && electron .",
+    "predev:web": "npm run cleanup --silent",
+    "dev:web": "npm run rebuild:node --silent && concurrently -k -n vite,server -c blue,magenta \"npm run dev:vite\" \"npm run dev:server\"",
+    "dev:server": "node server/index.js dev",
+    "prestart:web": "npm run cleanup --silent",
+    "start:web": "node server/index.js",
+    "cleanup": "kill-port 3001 5173 || exit 0",
+    "stop": "kill-port 3001 5173 || exit 0",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
+    "rebuild:node": "npm rebuild better-sqlite3",
+    "build": "vite build && electron-builder",
+    "build:web": "vite build",
+    "build:win": "vite build && electron-builder --win",
+    "build:linux": "vite build && electron-builder --linux",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.0.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^9.4.3",
+    "clsx": "^2.1.0",
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "http-proxy-middleware": "^3.0.5",
+    "lucide-react": "^0.358.0",
+    "multer": "^2.1.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.0",
+    "recharts": "^3.8.1",
+    "zustand": "^4.5.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.17",
+    "concurrently": "^8.2.2",
+    "electron": "^29.1.0",
+    "electron-builder": "^24.13.3",
+    "kill-port": "^2.0.1",
+    "postcss": "^8.4.35",
+    "puppeteer": "^22.4.0",
+    "tailwindcss": "^3.4.1",
+    "vite": "^5.1.4",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.imprestfms.app",
+    "productName": "Imprest FMS",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/db",
+        "to": "db"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Office"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  }
+}
