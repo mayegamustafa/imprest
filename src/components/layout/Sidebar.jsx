@@ -7,6 +7,7 @@ import {
   Wallet,
   FileText,
   Settings,
+  Download,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import useAppStore from '../../store/appStore'
@@ -24,6 +25,7 @@ export default function Sidebar() {
   const school = useAppStore(s => s.school)
   const currentUser = useAppStore(s => s.currentUser)
   const isAdmin = currentUser?.role === 'admin'
+  const isWeb = typeof window !== 'undefined' && window.__IMPREST_MODE__ === 'web'
 
   return (
     <aside className="w-[220px] min-w-[220px] bg-sidebar flex flex-col h-screen sticky top-0">
@@ -71,6 +73,18 @@ export default function Sidebar() {
             >
               <Settings size={16} strokeWidth={1.75} className="shrink-0" />
               <span>Settings</span>
+            </NavLink>
+          </div>
+        )}
+
+        {isWeb && (
+          <div className={isAdmin ? 'mt-2' : 'mt-6 pt-4 border-t border-white/10'}>
+            <NavLink
+              to="/downloads"
+              className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+            >
+              <Download size={16} strokeWidth={1.75} className="shrink-0" />
+              <span>Desktop App</span>
             </NavLink>
           </div>
         )}

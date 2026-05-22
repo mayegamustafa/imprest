@@ -8,6 +8,7 @@ import Abstract from './pages/Abstract'
 import Budgets from './pages/Budgets'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
+import Downloads from './pages/Downloads'
 import Login from './pages/Login'
 import NoElectronError from './components/NoElectronError'
 import ChangePasswordModal from './components/ChangePasswordModal'
@@ -80,6 +81,7 @@ function AppShell() {
             <Route path="budgets" element={<Budgets />} />
             <Route path="reports" element={<Reports />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="downloads" element={<Downloads />} />
           </Route>
         </Routes>
       </BrowserRouter>
