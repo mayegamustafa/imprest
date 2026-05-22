@@ -38,6 +38,9 @@ export default function Entries() {
   const [confirmDelete, setConfirmDelete]     = useState(null) // { id, payee, voucher_number } | 'bulk'
   const [bulkDeleting, setBulkDeleting]       = useState(false)
 
+  // ── Category filter ───────────────────────────────────────────────────────
+  const [categoryFilter, setCategoryFilter]   = useState(null) // null = all
+
   const [form, setForm] = useState({
     date: formatDateInput(new Date().toISOString()),
     payee: '',
@@ -126,7 +129,11 @@ export default function Entries() {
     }
   }, [activeCycleId])
 
-  useEffect(() => { loadEntries() }, [loadEntries])
+  useEffect(() => {
+    loadEntries()
+    setCategoryFilter(null)
+    setSelectedIds(new Set())
+  }, [loadEntries])
 
   // Compute running balances
   const totalAvailable = activeCycle
@@ -139,16 +146,22 @@ export default function Entries() {
     return { ...e, seq: i + 1, runningBalance }
   })
 
-  const filtered = entriesWithBalance.filter(e =>
-    !search ||
-    e.payee.toLowerCase().includes(search.toLowerCase()) ||
-    e.purpose.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = entriesWithBalance.filter(e => {
+    if (search && !e.payee.toLowerCase().includes(search.toLowerCase()) &&
+                  !e.purpose.toLowerCase().includes(search.toLowerCase())) return false
+    if (categoryFilter && !(e.splits || []).some(s => s.category_id === categoryFilter)) return false
+    return true
+  })
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const totalSpent = entries.reduce((s, e) => s + e.amount, 0)
   const totalBroughtBack = entries.reduce((s, e) => s + Number(e.balance_back || 0), 0)
+  // When a category filter is active, compute spending just for that category
+  const filteredCategorySpent = categoryFilter
+    ? filtered.reduce((s, e) => s + ((e.splits || []).find(sp => sp.category_id === categoryFilter)?.amount || 0), 0)
+    : null
+  const activeCategoryName = categoryFilter ? (categories.find(c => c.id === categoryFilter)?.name || '') : null
   const netSpent = totalSpent - totalBroughtBack
   const balance = totalAvailable - netSpent
   const broughtBackEntries = entries.filter(e => Number(e.balance_back || 0) > 0)
@@ -400,6 +413,16 @@ export default function Entries() {
               onChange={e => { setSearch(e.target.value); setPage(1) }}
             />
           </div>
+          <select
+            className="field-input max-w-[180px] text-sm"
+            value={categoryFilter ?? ''}
+            onChange={e => { setCategoryFilter(e.target.value ? Number(e.target.value) : null); setPage(1) }}
+          >
+            <option value="">All categories</option>
+            {categories.filter(c => c.is_active).map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
           <span className="text-xs text-ink-secondary">{filtered.length} entries</span>
         </div>
         <div className="flex items-center gap-2">
@@ -442,7 +465,9 @@ export default function Entries() {
       <div className={`grid gap-3 ${totalBroughtBack > 0 ? 'grid-cols-4' : 'grid-cols-3'}`}>
         {[
           { label: 'Total Available', value: formatUGX(totalAvailable), color: 'text-ink' },
-          { label: 'Total Spent', value: formatUGX(totalSpent), color: 'text-warning' },
+          categoryFilter
+            ? { label: `Spent — ${activeCategoryName}`, value: formatUGX(filteredCategorySpent), color: 'text-warning' }
+            : { label: 'Total Spent', value: formatUGX(totalSpent), color: 'text-warning' },
           ...(totalBroughtBack > 0 ? [{ label: 'Brought Back', value: formatUGX(totalBroughtBack), color: 'text-accent' }] : []),
           { label: 'Balance', value: formatUGX(balance), color: balance < 0 ? 'text-danger' : 'text-success' },
         ].map(({ label, value, color }) => (
