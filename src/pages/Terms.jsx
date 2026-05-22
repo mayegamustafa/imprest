@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, ChevronDown, ChevronRight, Pencil, Trash2, Lock, Unlock, ShieldCheck } from 'lucide-react'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
@@ -10,6 +10,11 @@ import { formatUGX, periodLabel, periodOptions, periodTypeLabel } from '../lib/f
 export default function Terms() {
   const { terms, activeCycleId, setActiveCycleId, refreshTerms, notify } = useAppStore()
   const [expanded, setExpanded] = useState({})
+
+  // Refresh cycle totals (total_spent, total_brought_back, etc.) every time
+  // the page is visited — entries may have been added since the last bootstrap.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { refreshTerms() }, [])
   const [showTermModal, setShowTermModal] = useState(false)
   const [showCycleModal, setShowCycleModal] = useState(false)
   const [editCycle, setEditCycle] = useState(null)
