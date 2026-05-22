@@ -326,10 +326,29 @@ function registerEntriesHandlers(ipcMain) {
     assertEntryCycleEditable(db, id)
     const old = db.prepare('SELECT * FROM entries WHERE id=?').get(id)
     if (!old) throw new Error('Entry not found.')
-    // Splits deleted via ON DELETE CASCADE
-    db.prepare('DELETE FROM entries WHERE id=?').run(id)
-    audit(db, 'entries', id, 'DELETE', old, null)
+    db.transaction(() => {
+      // Splits deleted via ON DELETE CASCADE
+      db.prepare('DELETE FROM entries WHERE id=?').run(id)
+      audit(db, 'entries', id, 'DELETE', old, null)
+    })()
     renumberCycle(db, old.cycle_id)
+    return { success: true }
+  })
+
+  ipcMain.handle('entries:bulkDelete', (event, { cycle_id, ids }) => {
+    requireRole('admin', 'accountant')
+    const db = getDatabase()
+    assertCycleEditable(db, cycle_id)
+    if (!Array.isArray(ids) || ids.length === 0) throw new Error('No entry IDs provided.')
+    db.transaction(() => {
+      ids.forEach(id => {
+        const old = db.prepare('SELECT * FROM entries WHERE id=?').get(id)
+        if (!old || old.cycle_id !== cycle_id) return
+        db.prepare('DELETE FROM entries WHERE id=?').run(id)
+        audit(db, 'entries', id, 'DELETE', old, null)
+      })
+    })()
+    renumberCycle(db, cycle_id)
     return { success: true }
   })
 

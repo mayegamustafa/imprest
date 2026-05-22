@@ -33,6 +33,11 @@ export default function Entries() {
   const [importing, setImporting]             = useState(false)
   const [importSkip, setImportSkip]           = useState({})
 
+  // ── Selection / delete state ─────────────────────────────────────────────
+  const [selectedIds, setSelectedIds]         = useState(new Set())
+  const [confirmDelete, setConfirmDelete]     = useState(null) // { id, payee, voucher_number } | 'bulk'
+  const [bulkDeleting, setBulkDeleting]       = useState(false)
+
   const [form, setForm] = useState({
     date: formatDateInput(new Date().toISOString()),
     payee: '',
@@ -276,15 +281,41 @@ export default function Entries() {
     }
   }
 
-  async function handleDelete(id) {
-    if (!confirm('Delete this entry? This cannot be undone.')) return
+  async function handleDelete(entry) {
+    setConfirmDelete(entry)
+  }
+
+  async function confirmSingleDelete() {
+    const entry = confirmDelete
+    setConfirmDelete(null)
     try {
-      await window.electronAPI.deleteEntry(id)
+      await window.electronAPI.deleteEntry(entry.id)
       notify('Entry deleted')
+      setSelectedIds(prev => { const s = new Set(prev); s.delete(entry.id); return s })
       loadEntries()
       refreshTerms()
     } catch (err) {
       notify(err.message, 'error')
+    }
+  }
+
+  async function handleBulkDelete() {
+    setConfirmDelete('bulk')
+  }
+
+  async function confirmBulkDelete() {
+    setConfirmDelete(null)
+    setBulkDeleting(true)
+    try {
+      await window.electronAPI.bulkDeleteEntries({ cycle_id: activeCycleId, ids: [...selectedIds] })
+      notify(`Deleted ${selectedIds.size} ${selectedIds.size === 1 ? 'entry' : 'entries'}`)
+      setSelectedIds(new Set())
+      loadEntries()
+      refreshTerms()
+    } catch (err) {
+      notify(err.message, 'error')
+    } finally {
+      setBulkDeleting(false)
     }
   }
 
@@ -385,6 +416,12 @@ export default function Entries() {
             <Upload size={14} />
             Import Excel
           </Button>
+          {selectedIds.size > 0 && !isCycleClosed && (
+            <Button variant="danger" onClick={handleBulkDelete} loading={bulkDeleting}>
+              <Trash2 size={14} />
+              Delete selected ({selectedIds.size})
+            </Button>
+          )}
           <Button onClick={openCreate} disabled={isCycleClosed}>
             <Plus size={14} />
             Add Entry
@@ -422,6 +459,22 @@ export default function Entries() {
           <table className="fin-table">
             <thead>
               <tr>
+                {!isCycleClosed && (
+                  <th className="w-8 text-center">
+                    <input
+                      type="checkbox"
+                      className="cursor-pointer"
+                      checked={paged.length > 0 && paged.every(e => selectedIds.has(e.id))}
+                      onChange={e => {
+                        if (e.target.checked) {
+                          setSelectedIds(prev => { const s = new Set(prev); paged.forEach(r => s.add(r.id)); return s })
+                        } else {
+                          setSelectedIds(prev => { const s = new Set(prev); paged.forEach(r => s.delete(r.id)); return s })
+                        }
+                      }}
+                    />
+                  </th>
+                )}
                 <th className="w-10">NO</th>
                 <th className="w-24">DATE</th>
                 <th>PAYEE</th>
@@ -434,6 +487,7 @@ export default function Entries() {
             <tbody>
               {/* Opening rows */}
               <tr className="bg-gray-50">
+                {!isCycleClosed && <td></td>}
                 <td className="text-center text-ink-muted">—</td>
                 <td className="text-ink-secondary text-xs font-medium">BAL B/FWD</td>
                 <td colSpan={2}></td>
@@ -442,6 +496,7 @@ export default function Entries() {
                 <td></td>
               </tr>
               <tr className="bg-gray-50">
+                {!isCycleClosed && <td></td>}
                 <td className="text-center text-ink-muted">—</td>
                 <td className="text-ink-secondary text-xs font-medium">RECEIVED</td>
                 <td colSpan={2}></td>
@@ -450,6 +505,7 @@ export default function Entries() {
                 <td></td>
               </tr>
               <tr className="bg-gray-50 border-b-2 border-border-strong">
+                {!isCycleClosed && <td></td>}
                 <td className="text-center text-ink-muted">—</td>
                 <td className="text-ink-secondary text-xs font-medium">TOTAL</td>
                 <td colSpan={2}></td>
@@ -459,11 +515,27 @@ export default function Entries() {
               </tr>
 
               {loading ? (
-                <tr><td colSpan={7} className="text-center py-8 text-ink-muted">Loading...</td></tr>
+                <tr><td colSpan={isCycleClosed ? 7 : 8} className="text-center py-8 text-ink-muted">Loading...</td></tr>
               ) : paged.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-8 text-ink-muted">No entries found.</td></tr>
+                <tr><td colSpan={isCycleClosed ? 7 : 8} className="text-center py-8 text-ink-muted">No entries found.</td></tr>
               ) : paged.map(entry => (
-                <tr key={entry.id}>
+                <tr key={entry.id} className={selectedIds.has(entry.id) ? 'bg-accent-light/20' : ''}>
+                  {!isCycleClosed && (
+                    <td className="text-center">
+                      <input
+                        type="checkbox"
+                        className="cursor-pointer"
+                        checked={selectedIds.has(entry.id)}
+                        onChange={e => {
+                          setSelectedIds(prev => {
+                            const s = new Set(prev)
+                            e.target.checked ? s.add(entry.id) : s.delete(entry.id)
+                            return s
+                          })
+                        }}
+                      />
+                    </td>
+                  )}
                   <td className="text-center text-ink-secondary text-xs">{entry.voucher_number}</td>
                   <td className="text-xs text-ink-secondary">{formatDate(entry.date)}</td>
                   <td className="font-medium">{entry.payee}</td>
@@ -481,7 +553,7 @@ export default function Entries() {
                           <button onClick={() => openEdit(entry)} className="p-1 hover:bg-gray-100 rounded text-ink-secondary hover:text-ink">
                             <Pencil size={13} />
                           </button>
-                          <button onClick={() => handleDelete(entry.id)} className="p-1 hover:bg-gray-100 rounded text-ink-secondary hover:text-danger">
+                          <button onClick={() => handleDelete(entry)} className="p-1 hover:bg-gray-100 rounded text-ink-secondary hover:text-danger">
                             <Trash2 size={13} />
                           </button>
                         </>
@@ -495,6 +567,7 @@ export default function Entries() {
               {!loading && entries.length > 0 && (
                 <>
                   <tr className="border-t-2 border-border-strong bg-gray-50 font-bold">
+                    {!isCycleClosed && <td></td>}
                     <td colSpan={4} className="text-right pr-4 text-sm">TOTAL AMOUNT SPENT</td>
                     <td className="money text-warning">{formatUGX(totalSpent)}</td>
                     <td className="money">{formatUGX(totalAvailable - totalSpent)}</td>
@@ -896,6 +969,37 @@ export default function Entries() {
             </tbody>
           </table>
         </div>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        title="Confirm Delete"
+        size="sm"
+        footer={<>
+          <Button variant="secondary" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+          <Button
+            variant="danger"
+            onClick={confirmDelete === 'bulk' ? confirmBulkDelete : confirmSingleDelete}
+            loading={bulkDeleting}
+          >
+            Delete {confirmDelete === 'bulk' ? `${selectedIds.size} entries` : 'entry'}
+          </Button>
+        </>}
+      >
+        {confirmDelete === 'bulk' ? (
+          <p className="text-sm text-ink">
+            Delete <strong>{selectedIds.size} selected {selectedIds.size === 1 ? 'entry' : 'entries'}</strong>?
+            {' '}This cannot be undone.
+          </p>
+        ) : confirmDelete ? (
+          <p className="text-sm text-ink">
+            Delete voucher <strong>#{confirmDelete.voucher_number}</strong> —{' '}
+            <strong>{confirmDelete.payee}</strong>?{' '}
+            This cannot be undone.
+          </p>
+        ) : null}
       </Modal>
     </div>
   )
