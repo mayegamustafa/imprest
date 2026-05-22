@@ -181,6 +181,25 @@ function renumberCycle(db, cycle_id) {
   })()
 }
 
+// ─── Swap a custom voucher number in after renumbering (collision-safe) ───────
+// If another entry already owns the target slot, the two entries swap numbers.
+function applyCustomVoucher(db, cycle_id, entry_id, customVoucher) {
+  const target = db.prepare('SELECT voucher_number FROM entries WHERE id=?').get(entry_id)
+  if (!target) return
+  const conflict = db.prepare(
+    'SELECT id FROM entries WHERE cycle_id=? AND voucher_number=? AND id!=?'
+  ).get(cycle_id, customVoucher, entry_id)
+  db.transaction(() => {
+    if (conflict) {
+      // Park this entry temporarily so the slot is free
+      db.prepare('UPDATE entries SET voucher_number=-? WHERE id=?').run(entry_id, entry_id)
+      // Give the conflicting entry the date-order number this entry currently holds
+      db.prepare('UPDATE entries SET voucher_number=? WHERE id=?').run(target.voucher_number, conflict.id)
+    }
+    db.prepare('UPDATE entries SET voucher_number=? WHERE id=?').run(customVoucher, entry_id)
+  })()
+}
+
 function registerEntriesHandlers(ipcMain) {
   ipcMain.handle('entries:getByCycle', (event, cycleId) => {
     const db = getDatabase()
@@ -222,10 +241,10 @@ function registerEntriesHandlers(ipcMain) {
     }
     validateSplitsRequired(splits, amount, balanceBack)
 
-    // Voucher number: use custom if provided, otherwise temp MAX+1 (renumber will fix order)
     const customVoucher = data.voucher_number ? Number(data.voucher_number) : 0
+    // Always insert with a safe temp number; renumberCycle assigns the correct date-order position.
     const maxVoucher = db.prepare('SELECT MAX(voucher_number) as m FROM entries WHERE cycle_id=?').get(cycle_id)
-    const voucherNumber = customVoucher > 0 ? customVoucher : (maxVoucher.m ?? 0) + 1
+    const tempVoucher = (maxVoucher.m ?? 0) + 1
 
     const insertEntry = db.prepare(`
       INSERT INTO entries (cycle_id, voucher_number, date, payee, purpose, amount, balance_back)
@@ -237,19 +256,20 @@ function registerEntriesHandlers(ipcMain) {
     `)
 
     const run = db.transaction(() => {
-      const result = insertEntry.run(cycle_id, voucherNumber, date, payee.trim(), purpose.trim(), amount, balanceBack)
+      const result = insertEntry.run(cycle_id, tempVoucher, date, payee.trim(), purpose.trim(), amount, balanceBack)
       const entryId = result.lastInsertRowid
       ;(splits || []).forEach(sp => {
         if (Number(sp.amount) > 0) insertSplit.run(entryId, sp.category_id, sp.amount)
       })
-      audit(db, 'entries', entryId, 'INSERT', null, { ...data, voucher_number: voucherNumber })
+      audit(db, 'entries', entryId, 'INSERT', null, { ...data })
       return entryId
     })
 
     const entryId = run()
-    // If no custom number, renumber the whole cycle by date so the new entry
-    // slots into the correct position regardless of insertion order.
-    if (!customVoucher) renumberCycle(db, cycle_id)
+    // Always renumber by date first so new entry slots into its correct position.
+    renumberCycle(db, cycle_id)
+    // Then apply custom override if the user specified one.
+    if (customVoucher > 0) applyCustomVoucher(db, cycle_id, entryId, customVoucher)
     return { id: entryId, success: true }
   })
 
@@ -276,19 +296,12 @@ function registerEntriesHandlers(ipcMain) {
     const customVoucher = data.voucher_number ? Number(data.voucher_number) : 0
 
     const run = db.transaction(() => {
-      if (customVoucher > 0) {
-        db.prepare(`
-          UPDATE entries
-          SET date=?, payee=?, purpose=?, amount=?, balance_back=?, voucher_number=?, updated_at=CURRENT_TIMESTAMP
-          WHERE id=?
-        `).run(date, payee.trim(), purpose.trim(), amount, balanceBack, customVoucher, id)
-      } else {
-        db.prepare(`
-          UPDATE entries
-          SET date=?, payee=?, purpose=?, amount=?, balance_back=?, updated_at=CURRENT_TIMESTAMP
-          WHERE id=?
-        `).run(date, payee.trim(), purpose.trim(), amount, balanceBack, id)
-      }
+      // Never touch voucher_number here — renumberCycle handles ordering.
+      db.prepare(`
+        UPDATE entries
+        SET date=?, payee=?, purpose=?, amount=?, balance_back=?, updated_at=CURRENT_TIMESTAMP
+        WHERE id=?
+      `).run(date, payee.trim(), purpose.trim(), amount, balanceBack, id)
 
       // Replace splits
       db.prepare('DELETE FROM entry_category_splits WHERE entry_id=?').run(id)
@@ -300,8 +313,10 @@ function registerEntriesHandlers(ipcMain) {
     })
 
     run()
-    // If no custom number was set, renumber by date (handles date changes moving an entry's position)
-    if (!customVoucher) renumberCycle(db, old.cycle_id)
+    // Always renumber by date so any date change is reflected in voucher order.
+    renumberCycle(db, old.cycle_id)
+    // Then apply custom override if the user specified one.
+    if (customVoucher > 0) applyCustomVoucher(db, old.cycle_id, id, customVoucher)
     return { success: true }
   })
 

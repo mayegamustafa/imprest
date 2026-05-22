@@ -179,7 +179,7 @@ export default function Entries() {
       purpose: entry.purpose,
       amount: String(entry.amount),
       balance_back: entry.balance_back ? String(entry.balance_back) : '',
-      voucher_number: String(entry.voucher_number),
+      voucher_number: '',
       splits: splitsMap,
       // Default to single-category if entry has 0 or 1 split
       single_category_id: splitCount === 1 ? entry.splits[0].category_id : null,
