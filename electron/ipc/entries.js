@@ -1,5 +1,130 @@
 const { getDatabase } = require('../db/connection')
 const { requireRole, getCurrentUserId } = require('./auth')
+const ExcelJS = require('exceljs')
+
+// ─── Excel parsing helpers ────────────────────────────────────────────────────
+function getCellText(cell) {
+  const v = cell.value
+  if (v === null || v === undefined) return ''
+  if (typeof v === 'string') return v.trim()
+  if (typeof v === 'number') return String(v)
+  if (v instanceof Date) return v.toISOString().slice(0, 10)
+  if (typeof v === 'object') {
+    if (v.result !== undefined) return getCellText({ value: v.result })
+    if (v.richText) return v.richText.map(r => r.text || '').join('').trim()
+    if (v.text) return String(v.text).trim()
+    if (v.error) return ''
+  }
+  return String(v).trim()
+}
+
+function parseExcelDate(val) {
+  if (val === null || val === undefined) return null
+  if (val instanceof Date) return val.toISOString().slice(0, 10)
+  // Excel serial number (days since 1900-01-00)
+  if (typeof val === 'number' && val > 0 && val < 2958466) {
+    const d = new Date(Math.round((val - 25569) * 86400 * 1000))
+    return d.toISOString().slice(0, 10)
+  }
+  if (typeof val === 'object' && val !== null && val.result !== undefined) {
+    return parseExcelDate(val.result)
+  }
+  const s = String(val).trim()
+  // DD/MM/YY or DD/MM/YYYY
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
+  if (m) {
+    let [, d, mo, y] = m
+    if (y.length === 2) y = '20' + y
+    return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`
+  }
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) return s.slice(0, 10)
+  const dt = new Date(s)
+  if (!isNaN(dt)) return dt.toISOString().slice(0, 10)
+  return null
+}
+
+function parseExcelAmount(val) {
+  if (val === null || val === undefined) return 0
+  if (typeof val === 'number') return val
+  if (typeof val === 'object' && val !== null && val.result !== undefined) {
+    return parseExcelAmount(val.result)
+  }
+  const n = parseFloat(String(val).replace(/[, ]/g, ''))
+  return isNaN(n) ? 0 : n
+}
+
+function parseExcelRows(workbook) {
+  const sheet = workbook.worksheets[0]
+  if (!sheet) throw new Error('No worksheets found in the file.')
+
+  let headerIdx = -1
+  let colDate, colPayee, colPurpose, colAmount, colBB
+
+  sheet.eachRow({ includeEmpty: false }, (row, rowIdx) => {
+    if (headerIdx !== -1) return
+    const cells = []
+    row.eachCell({ includeEmpty: true }, (cell, colIdx) => {
+      cells.push({ idx: colIdx, v: getCellText(cell).toLowerCase() })
+    })
+    const hasDate   = cells.some(c => c.v === 'date')
+    const hasAmount = cells.some(c => ['amount', 'amt'].includes(c.v))
+    if (hasDate && hasAmount) {
+      headerIdx = rowIdx
+      cells.forEach(({ idx, v }) => {
+        if (v === 'date') colDate = idx
+        if (['payee', 'name', 'received by', 'paid to'].includes(v)) colPayee = idx
+        if (['purpose', 'description', 'particulars', 'details', 'narration'].includes(v)) colPurpose = idx
+        if (['amount', 'amt'].includes(v)) colAmount = idx
+        if (['balance back', 'balance_back', 'returned', 'b/b', 'bal back', 'bal. back'].includes(v)) colBB = idx
+      })
+    }
+  })
+
+  // No header detected — assume A=date, B=payee, C=purpose, D=amount
+  if (headerIdx === -1) {
+    colDate = 1; colPayee = 2; colPurpose = 3; colAmount = 4
+    headerIdx = 0
+  }
+
+  const rows = []
+  sheet.eachRow({ includeEmpty: false }, (row, rowIdx) => {
+    if (rowIdx <= headerIdx) return
+
+    const rawDate    = row.getCell(colDate || 1).value
+    const rawPayee   = getCellText(row.getCell(colPayee || 2))
+    const rawPurpose = getCellText(row.getCell(colPurpose || 3))
+    const rawAmount  = row.getCell(colAmount || 4).value
+    const rawBB      = colBB ? row.getCell(colBB).value : null
+
+    if (!rawPayee && !rawDate && !rawAmount) return
+    if (['total', 'sub-total', 'grand total', 'subtotal'].includes(rawPayee.toLowerCase())) return
+
+    const date         = parseExcelDate(rawDate)
+    const amount       = parseExcelAmount(rawAmount)
+    const balance_back = parseExcelAmount(rawBB)
+
+    const errors = []
+    if (!date)        errors.push('invalid date')
+    if (!rawPayee)    errors.push('missing payee')
+    if (!rawPurpose)  errors.push('missing purpose')
+    if (!(amount > 0)) errors.push('invalid or zero amount')
+
+    rows.push({
+      date: date || '',
+      payee: rawPayee,
+      purpose: rawPurpose,
+      amount,
+      balance_back,
+      _error: errors.length ? errors.join('; ') : null,
+    })
+  })
+
+  if (rows.length === 0) {
+    throw new Error('No data rows found. Make sure your file has DATE, PAYEE, PURPOSE, AMOUNT columns.')
+  }
+  return rows
+}
 
 // ─── Guards ───────────────────────────────────────────────────────────────────
 function assertCycleEditable(db, cycleId) {
@@ -163,6 +288,52 @@ function registerEntriesHandlers(ipcMain) {
     audit(db, 'entries', id, 'DELETE', old, null)
     return { success: true }
   })
+
+  ipcMain.handle('entries:parseExcel', async (event, filePath) => {
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.readFile(filePath)
+    return parseExcelRows(workbook)
+  })
+
+  ipcMain.handle('entries:bulkCreate', (event, { cycle_id, rows, default_category_id }) => {
+    requireRole('admin', 'accountant')
+    const db = getDatabase()
+    assertCycleEditable(db, cycle_id)
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error('No rows to import.')
+    const maxV = db.prepare('SELECT MAX(voucher_number) as m FROM entries WHERE cycle_id=?').get(cycle_id)
+    let nextVoucher = (maxV.m ?? 0) + 1
+    const stmtEntry = db.prepare(
+      `INSERT INTO entries (cycle_id, voucher_number, date, payee, purpose, amount, balance_back)
+       VALUES (?,?,?,?,?,?,?)`
+    )
+    const stmtSplit = db.prepare(
+      'INSERT INTO entry_category_splits (entry_id, category_id, amount) VALUES (?,?,?)'
+    )
+    let inserted = 0
+    const errors = []
+    db.transaction(() => {
+      rows.forEach((row, i) => {
+        try {
+          const amount = Number(row.amount)
+          const bb     = Number(row.balance_back || 0)
+          if (!row.date || !row.payee?.trim() || !row.purpose?.trim() || !(amount > 0)) {
+            errors.push({ row: i + 1, error: row._error || 'Missing required fields' })
+            return
+          }
+          const res = stmtEntry.run(cycle_id, nextVoucher, row.date, row.payee.trim(), row.purpose.trim(), amount, bb)
+          const entryId = res.lastInsertRowid
+          const net = amount - bb
+          if (net > 0.005 && default_category_id) stmtSplit.run(entryId, default_category_id, net)
+          audit(db, 'entries', entryId, 'INSERT', null, { ...row, cycle_id, voucher_number: nextVoucher })
+          nextVoucher++
+          inserted++
+        } catch (err) {
+          errors.push({ row: i + 1, error: err.message })
+        }
+      })
+    })()
+    return { inserted, errors }
+  })
 }
 
 function audit(db, tableName, recordId, action, oldValues, newValues) {
@@ -177,4 +348,4 @@ function audit(db, tableName, recordId, action, oldValues, newValues) {
   )
 }
 
-module.exports = { registerEntriesHandlers }
+module.exports = { registerEntriesHandlers, parseExcelRows }

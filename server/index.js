@@ -93,11 +93,13 @@ process.on('unhandledRejection', (err) => {
   process.exit(1)
 })
 
+const ExcelJS = require('exceljs')
 const { initDatabase, closeDatabase, getDbPath } = require('../electron/db/connection')
 const { runWithSession } = require('../electron/lib/session-context')
 const { bearerAuthMiddleware, signToken } = require('../electron/lib/jwt')
 const { generatePDF, generateExcel } = require('../electron/ipc/reports')
 const { requireRole } = require('../electron/ipc/auth')
+const { parseExcelRows } = require('../electron/ipc/entries')
 
 // ─── Initialise DB before doing anything else ────────────────────────────────
 try {
@@ -176,6 +178,7 @@ const METHOD_MAP = {
   createEntry: 'entries:create',
   updateEntry: 'entries:update',
   deleteEntry: 'entries:delete',
+  bulkCreateEntries: 'entries:bulkCreate',
 
   // Reports (data only — file exports use dedicated endpoints)
   getLedgerData: 'reports:getLedger',
@@ -351,6 +354,22 @@ app.post('/api/restore', upload.single('database'), (req, res) => {
     initDatabase()
     res.json({ success: true })
   } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// ─── /api/import/excel — parse uploaded Excel, return rows ──────────────────
+app.post('/api/import/excel', upload.single('file'), async (req, res) => {
+  try {
+    requireRole('admin', 'accountant')
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.readFile(req.file.path)
+    const rows = parseExcelRows(workbook)
+    fs.unlinkSync(req.file.path)
+    res.json({ rows })
+  } catch (err) {
+    if (req.file?.path) fs.unlink(req.file.path, () => {})
     res.status(400).json({ error: err.message })
   }
 })

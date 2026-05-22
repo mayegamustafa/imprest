@@ -77,9 +77,15 @@ export default function Terms() {
     } else {
       setEditCycle(null)
       const term = terms.find(t => t.id === termId)
-      const lastCycle = (term?.cycles || []).slice(-1)[0]
+      const termCycles = term?.cycles || []
+      const lastInTerm = termCycles.slice(-1)[0]
+      // Cross-term fallback: carry from the last cycle across ALL terms when
+      // creating the first cycle of a brand-new term
+      const allCycles  = terms.flatMap(t => t.cycles || []).sort((a, b) => a.id - b.id)
+      const lastCycle  = lastInTerm || allCycles.slice(-1)[0]
       const prevBalance = lastCycle
-        ? lastCycle.opening_balance + lastCycle.amount_received - (lastCycle.total_spent || 0)
+        ? lastCycle.opening_balance + lastCycle.amount_received
+          - (lastCycle.total_spent || 0) + (lastCycle.total_brought_back || 0)
         : 0
       const nextNum = (term?.cycles?.length || 0) + 1
       setCycleForm({

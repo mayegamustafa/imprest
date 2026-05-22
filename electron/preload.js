@@ -45,7 +45,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getEntries: (cycleId) => ipcRenderer.invoke('entries:getByCycle', cycleId),
   createEntry: (data) => ipcRenderer.invoke('entries:create', data),
   updateEntry: (id, data) => ipcRenderer.invoke('entries:update', id, data),
-  deleteEntry: (id) => ipcRenderer.invoke('entries:delete', id),
+  deleteEntry:         (id)   => ipcRenderer.invoke('entries:delete', id),
+  parseExcelFile:      (path) => ipcRenderer.invoke('entries:parseExcel', path),
+  bulkCreateEntries:   (data) => ipcRenderer.invoke('entries:bulkCreate', data),
 
   // ── Reports ──────────────────────────────────────────────────────────────────
   getLedgerData: (cycleId) => ipcRenderer.invoke('reports:getLedger', cycleId),

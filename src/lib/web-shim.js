@@ -97,7 +97,19 @@ const webApi = {
   getEntries: (cycleId) => rpc('getEntries', [cycleId]),
   createEntry: (data) => rpc('createEntry', [data]),
   updateEntry: (id, data) => rpc('updateEntry', [id, data]),
-  deleteEntry: (id) => rpc('deleteEntry', [id]),
+  deleteEntry:         (id)   => rpc('deleteEntry', [id]),
+  parseExcelFile: async (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch('/api/import/excel', { method: 'POST', credentials: 'include', body: fd })
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}))
+      throw new Error(e.error || `HTTP ${res.status}`)
+    }
+    const data = await res.json()
+    return data.rows
+  },
+  bulkCreateEntries:   (data) => rpc('bulkCreateEntries', [data]),
 
   // ── Reports (data) ─────────────────────────────────────────────────────────
   getLedgerData: (cycleId) => rpc('getLedgerData', [cycleId]),

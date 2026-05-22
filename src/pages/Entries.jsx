@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, Lock, FolderPlus, Layers, RotateCcw } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, Lock, FolderPlus, Layers, RotateCcw, Upload } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
@@ -25,6 +25,13 @@ export default function Entries() {
   const [activeTab, setActiveTab] = useState('details')
   const [page, setPage] = useState(1)
 
+  // ── Import state ──────────────────────────────────────────────────────────
+  const [importRows, setImportRows]           = useState([])
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importCatId, setImportCatId]         = useState(null)
+  const [importing, setImporting]             = useState(false)
+  const [importSkip, setImportSkip]           = useState({})
+
   const [form, setForm] = useState({
     date: formatDateInput(new Date().toISOString()),
     payee: '',
@@ -35,6 +42,43 @@ export default function Entries() {
     single_category_id: null, // single-category mode
     multi_mode: false,
   })
+
+  // ── Import handlers ──────────────────────────────────────────────────────
+  async function handleImportClick() {
+    try {
+      const result = await window.electronAPI.openFileDialog({
+        title: 'Select Excel File',
+        filters: [{ name: 'Excel Files', extensions: ['xlsx'] }],
+      })
+      if (result.canceled || !result.filePaths?.[0]) return
+      const fileOrPath = result.filePaths[0]
+      const rows = await window.electronAPI.parseExcelFile(fileOrPath)
+      setImportRows(rows)
+      setImportSkip({})
+      setImportCatId(categories[0]?.id || null)
+      setShowImportModal(true)
+    } catch (err) { notify(err.message, 'error') }
+  }
+
+  async function handleBulkImport() {
+    const validRows = importRows.filter((r, i) => !importSkip[i] && !r._error)
+    if (validRows.length === 0) { notify('No valid rows to import', 'error'); return }
+    setImporting(true)
+    try {
+      const result = await window.electronAPI.bulkCreateEntries({
+        cycle_id: activeCycleId,
+        rows: validRows,
+        default_category_id: importCatId || null,
+      })
+      notify(
+        `Imported ${result.inserted} of ${validRows.length} entries` +
+        (result.errors.length ? ` (${result.errors.length} failed)` : '')
+      )
+      setShowImportModal(false)
+      loadEntries()
+    } catch (err) { notify(err.message, 'error') }
+    finally { setImporting(false) }
+  }
 
   // Find active cycle
   let activeCycle = null
@@ -302,10 +346,16 @@ export default function Entries() {
           </div>
           <span className="text-xs text-ink-secondary">{filtered.length} entries</span>
         </div>
-        <Button onClick={openCreate} disabled={isCycleClosed}>
-          <Plus size={14} />
-          Add Entry
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" onClick={handleImportClick} disabled={isCycleClosed}>
+            <Upload size={14} />
+            Import Excel
+          </Button>
+          <Button onClick={openCreate} disabled={isCycleClosed}>
+            <Plus size={14} />
+            Add Entry
+          </Button>
+        </div>
       </div>
 
       {isCycleClosed && (
@@ -682,6 +732,99 @@ export default function Entries() {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Import Preview Modal */}
+      <Modal
+        open={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        title="Import from Excel"
+        size="xl"
+        footer={<>
+          <Button variant="secondary" onClick={() => setShowImportModal(false)}>Cancel</Button>
+          <Button
+            onClick={handleBulkImport}
+            loading={importing}
+            disabled={importRows.filter((r, i) => !importSkip[i] && !r._error).length === 0}
+          >
+            Import {importRows.filter((r, i) => !importSkip[i] && !r._error).length} entries
+          </Button>
+        </>}
+      >
+        {/* Summary */}
+        <div className="flex items-center gap-4 mb-3 text-sm">
+          <span className="text-ink">{importRows.length} rows found</span>
+          <span className="text-success">{importRows.filter(r => !r._error).length} valid</span>
+          {importRows.some(r => r._error) && (
+            <span className="text-danger">{importRows.filter(r => r._error).length} with errors</span>
+          )}
+        </div>
+
+        {/* Default category */}
+        {categories.length > 0 && (
+          <div className="mb-3">
+            <label className="field-label">Default Category (applied to all imported rows)</label>
+            <select
+              className="field-input"
+              value={importCatId || ''}
+              onChange={e => setImportCatId(Number(e.target.value) || null)}
+            >
+              <option value="">— none (assign later) —</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* Preview table */}
+        <div className="overflow-auto max-h-80 border border-border rounded">
+          <table className="fin-table">
+            <thead>
+              <tr>
+                <th className="w-8">✓</th>
+                <th>DATE</th>
+                <th>PAYEE</th>
+                <th>PURPOSE</th>
+                <th className="text-right">AMOUNT</th>
+                <th className="text-right">B/B</th>
+              </tr>
+            </thead>
+            <tbody>
+              {importRows.map((r, i) => (
+                <tr
+                  key={i}
+                  className={
+                    r._error
+                      ? 'bg-red-50'
+                      : importSkip[i]
+                        ? 'opacity-40'
+                        : ''
+                  }
+                >
+                  <td className="text-center">
+                    <input
+                      type="checkbox"
+                      checked={!importSkip[i] && !r._error}
+                      disabled={!!r._error}
+                      onChange={e => setImportSkip(s => ({ ...s, [i]: !e.target.checked }))}
+                    />
+                  </td>
+                  <td className="text-xs">{r.date}</td>
+                  <td className="text-sm">{r.payee}</td>
+                  <td className="text-xs text-ink-secondary">
+                    {r._error
+                      ? <span className="text-danger font-medium">{r._error}</span>
+                      : r.purpose
+                    }
+                  </td>
+                  <td className="money text-sm">{r.amount ? formatUGX(r.amount) : '—'}</td>
+                  <td className="money text-sm text-accent">
+                    {r.balance_back > 0 ? formatUGX(r.balance_back) : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Modal>
     </div>
   )
