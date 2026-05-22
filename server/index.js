@@ -429,13 +429,25 @@ if (isDev) {
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
 const server = app.listen(PORT, () => {
+  const dataDir = process.env.IMPREST_DATA_DIR
+  const isPersisted = !!dataDir
+
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('  Imprest FMS — Web Mode')
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log(`  ▶ Open in browser:  \x1b[36mhttp://localhost:${PORT}\x1b[0m`)
   console.log(`  Mode:               ${isDev ? 'development (proxying UI to Vite)' : (fs.existsSync(distDir) ? 'production (serving built UI)' : 'production (no UI build)')}`)
   console.log(`  Database:           ${getDbPath()}`)
-  console.log('  Default login:      admin / admin (you will be prompted to change)')
+  if (isPersisted) {
+    console.log(`  Storage:            \x1b[32mPERSISTENT (IMPREST_DATA_DIR=${dataDir})\x1b[0m`)
+  } else {
+    console.log(`  Storage:            \x1b[33mWARNING: IMPREST_DATA_DIR not set — database is stored in the`)
+    console.log(`                      home directory and will be LOST on container restart.`)
+    console.log(`                      Set IMPREST_DATA_DIR to a mounted volume path to persist data.\x1b[0m`)
+  }
+  const adminUser = process.env.INITIAL_ADMIN_USERNAME || 'admin'
+  const adminPass = process.env.INITIAL_ADMIN_PASSWORD ? '(set via env)' : 'admin'
+  console.log(`  Default login:      ${adminUser} / ${adminPass}`)
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log('  Server is running. Press Ctrl+C to stop.')
 })

@@ -1,14 +1,21 @@
 const bcrypt = require('bcryptjs')
 
 function seedDefaults(db) {
-  // Default admin user — must change password on first login
+  // Default admin user — credentials can be overridden via env vars so that
+  // a fresh deployment on Railway (or any server) creates YOUR account instead
+  // of the generic admin/admin default.
   const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get()
   if (userCount.c === 0) {
-    const passwordHash = bcrypt.hashSync('admin', 10)
+    const username = process.env.INITIAL_ADMIN_USERNAME || 'admin'
+    const password = process.env.INITIAL_ADMIN_PASSWORD || 'admin'
+    const fullName = process.env.INITIAL_ADMIN_NAME     || 'Administrator'
+    const passwordHash = bcrypt.hashSync(password, 10)
+    // If a real password was supplied via env, don't force a change on first login
+    const mustChange = process.env.INITIAL_ADMIN_PASSWORD ? 0 : 1
     db.prepare(`
       INSERT INTO users (username, password_hash, full_name, role, must_change_password)
       VALUES (?,?,?,?,?)
-    `).run('admin', passwordHash, 'Administrator', 'admin', 1)
+    `).run(username, passwordHash, fullName, 'admin', mustChange)
   }
 
   const schoolCount = db.prepare('SELECT COUNT(*) as c FROM school_config').get()
