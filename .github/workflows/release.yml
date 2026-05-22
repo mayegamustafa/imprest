@@ -1,25 +1,50 @@
-# Build and publish desktop installers when a version tag is pushed.
+# Auto-publish desktop installers on every push to main.
+# Workflow:
+#   1. bump job: auto-increments patch version, commits, tags, pushes
+#   2. build job: builds Windows + Linux installers and uploads to GitHub Release
 #
-# To cut a release:
-#   1. Bump the version:           npm version patch    (or minor / major)
-#   2. Push the tag to GitHub:     git push --follow-tags
-#   3. This workflow runs, builds for Windows + Linux, and uploads the
-#      installers to a new GitHub Release named after the tag.
-#   4. End users running the previous version see the update appear in
-#      the app within an hour (electron-updater polls hourly).
+# No manual tagging needed — just push to main.
 
 name: Release
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches: [main]
 
 permissions:
-  contents: write   # required for electron-builder to create the release
+  contents: write
 
 jobs:
+  bump:
+    # Skip if this commit is itself the auto-bump (prevents infinite loop)
+    if: "!startsWith(github.event.head_commit.message, 'chore: bump version')"
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Bump patch version, commit, tag, push
+        id: bump
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          NEW=$(npm version patch --no-git-tag-version | sed 's/v//')
+          git add package.json package-lock.json
+          git commit -m "chore: bump version to v${NEW}"
+          git tag "v${NEW}"
+          git push origin main --follow-tags
+          echo "tag=v${NEW}" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: bump
     strategy:
       fail-fast: false
       matrix:
@@ -32,16 +57,16 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.tag }}
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          cache: npm
 
-      - name: Install Linux system deps (for AppImage + .deb)
+      - name: Install Linux system deps (AppImage + .deb)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
@@ -66,16 +91,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run release:linux
-
-      - name: Upload artifacts (debug)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: imprest-${{ matrix.artifact }}-${{ github.run_number }}
-          path: |
-            dist-electron/*.exe
-            dist-electron/*.AppImage
-            dist-electron/*.deb
-            dist-electron/latest*.yml
-          if-no-files-found: ignore
           retention-days: 14

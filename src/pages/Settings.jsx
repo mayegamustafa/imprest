@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Save, Plus, Trash2, GripVertical, Database, Upload, Key, ShieldCheck, UserCircle } from 'lucide-react'
+import { Save, Plus, Trash2, GripVertical, Database, Upload, Key, ShieldCheck, UserCircle, Cloud, CloudOff, CloudUpload, CloudDownload, CheckCircle, AlertCircle, Wifi, WifiOff } from 'lucide-react'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import Card from '../components/ui/Card'
@@ -315,6 +315,19 @@ function SignatoriesTab({ notify }) {
 function DataTab({ notify }) {
   const [loading, setLoading] = useState(false)
 
+  // ── Cloud sync config (persisted in localStorage) ────────────────────────
+  const [syncUrl, setSyncUrl]       = useState(() => localStorage.getItem('imprest_sync_url') || '')
+  const [syncUser, setSyncUser]     = useState(() => localStorage.getItem('imprest_sync_user') || '')
+  const [syncPass, setSyncPass]     = useState('')
+  const [syncToken, setSyncToken]   = useState(() => localStorage.getItem('imprest_sync_token') || '')
+  const [syncStatus, setSyncStatus] = useState(null)   // null | 'ok' | 'error'
+  const [syncMsg, setSyncMsg]       = useState('')
+  const [syncing, setSyncing]       = useState(false)
+  const [lastSync, setLastSync]     = useState(() => localStorage.getItem('imprest_sync_last') || '')
+
+  const isOnline = navigator.onLine
+
+  // ── Local backup ─────────────────────────────────────────────────────────
   async function handleBackup() {
     const isWeb = window.__IMPREST_MODE__ === 'web'
     setLoading(true)
@@ -348,7 +361,6 @@ function DataTab({ notify }) {
     if (result.canceled || !result.filePaths?.[0]) return
     setLoading(true)
     try {
-      // Desktop: filePaths[0] is a path string. Web: it's a File object.
       await window.electronAPI.restoreDatabase(result.filePaths[0])
       notify('Database restored. Please reload the app.')
     } catch (err) {
@@ -358,42 +370,258 @@ function DataTab({ notify }) {
     }
   }
 
-  return (
-    <Card title="Data Management">
-      <div className="space-y-5">
-        <div className="border border-border rounded p-4 space-y-2">
-          <div className="flex items-start gap-3">
-            <Database size={20} strokeWidth={1.5} className="text-accent mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-ink">Backup Database</p>
-              <p className="text-xs text-ink-secondary mt-0.5">
-                Save a copy of the entire database to your chosen location. Do this regularly to prevent data loss.
-              </p>
-            </div>
-          </div>
-          <Button onClick={handleBackup} loading={loading} size="sm">
-            <Database size={13} />
-            Export Backup
-          </Button>
-        </div>
+  // ── Cloud sync helpers ────────────────────────────────────────────────────
+  function saveSyncConfig() {
+    const url = syncUrl.trim().replace(/\/$/, '')
+    if (!url) { notify('Enter the server URL first', 'error'); return }
+    localStorage.setItem('imprest_sync_url', url)
+    localStorage.setItem('imprest_sync_user', syncUser.trim())
+    setSyncUrl(url)
+    notify('Sync settings saved')
+  }
 
-        <div className="border border-danger/30 rounded p-4 space-y-2 bg-danger-light/30">
-          <div className="flex items-start gap-3">
-            <Upload size={20} strokeWidth={1.5} className="text-danger mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-danger">Restore Database</p>
-              <p className="text-xs text-ink-secondary mt-0.5">
-                Replace the current database with a backup file. <strong>All existing data will be lost.</strong>
-              </p>
+  async function connectCloud() {
+    const url = syncUrl.trim().replace(/\/$/, '')
+    if (!url || !syncUser.trim() || !syncPass) {
+      notify('Enter URL, username and password to connect', 'error'); return
+    }
+    setSyncing(true); setSyncStatus(null)
+    try {
+      const res = await fetch(`${url}/api/rpc`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'login', args: [syncUser.trim(), syncPass] }),
+        credentials: 'omit',
+      })
+      const body = await res.json()
+      if (!res.ok || !body.result?.token) throw new Error(body.error || 'Login failed')
+      const token = body.result.token
+      setSyncToken(token)
+      localStorage.setItem('imprest_sync_token', token)
+      localStorage.setItem('imprest_sync_url', url)
+      localStorage.setItem('imprest_sync_user', syncUser.trim())
+      setSyncPass('')
+      setSyncStatus('ok')
+      setSyncMsg('Connected successfully')
+    } catch (err) {
+      setSyncStatus('error')
+      setSyncMsg(err.message)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  async function pushToCloud() {
+    const url = syncUrl.trim().replace(/\/$/, '')
+    if (!url || !syncToken) { notify('Connect to cloud first', 'error'); return }
+    setSyncing(true); setSyncStatus(null)
+    try {
+      // Get local backup as blob
+      const res = await fetch('/api/backup', { credentials: 'include' })
+      if (!res.ok) throw new Error('Could not read local database')
+      const blob = await res.blob()
+      // Push to remote server
+      const form = new FormData()
+      form.append('database', blob, 'imprest.sqlite3')
+      const remote = await fetch(`${url}/api/restore`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${syncToken}` },
+        body: form,
+        credentials: 'omit',
+      })
+      const body = await remote.json()
+      if (!remote.ok) throw new Error(body.error || `Upload failed (${remote.status})`)
+      const now = new Date().toLocaleString()
+      setLastSync(now)
+      localStorage.setItem('imprest_sync_last', now)
+      setSyncStatus('ok')
+      setSyncMsg('Data pushed to cloud successfully')
+      notify('Pushed to cloud ✓')
+    } catch (err) {
+      setSyncStatus('error')
+      setSyncMsg(err.message)
+      notify(err.message, 'error')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  async function pullFromCloud() {
+    if (!confirm('Pull will replace ALL local data with the cloud copy. Continue?')) return
+    const url = syncUrl.trim().replace(/\/$/, '')
+    if (!url || !syncToken) { notify('Connect to cloud first', 'error'); return }
+    setSyncing(true); setSyncStatus(null)
+    try {
+      const res = await fetch(`${url}/api/backup`, {
+        headers: { Authorization: `Bearer ${syncToken}` },
+        credentials: 'omit',
+      })
+      if (!res.ok) throw new Error(`Download failed (${res.status})`)
+      const blob = await res.blob()
+      const file = new File([blob], 'imprest.sqlite3', { type: 'application/x-sqlite3' })
+      await window.electronAPI.restoreDatabase(file)
+      const now = new Date().toLocaleString()
+      setLastSync(now)
+      localStorage.setItem('imprest_sync_last', now)
+      setSyncStatus('ok')
+      setSyncMsg('Data pulled from cloud. Reload to see changes.')
+      notify('Pulled from cloud. Please reload.')
+    } catch (err) {
+      setSyncStatus('error')
+      setSyncMsg(err.message)
+      notify(err.message, 'error')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  function disconnectCloud() {
+    setSyncToken('')
+    localStorage.removeItem('imprest_sync_token')
+    setSyncStatus(null)
+    setSyncMsg('')
+    notify('Disconnected from cloud')
+  }
+
+  const connected = !!syncToken
+
+  return (
+    <div className="space-y-5">
+      {/* ── Local backup ─────────────────────────────────────────────────── */}
+      <Card title="Local Backup">
+        <div className="space-y-4">
+          <div className="border border-border rounded p-4 space-y-2">
+            <div className="flex items-start gap-3">
+              <Database size={20} strokeWidth={1.5} className="text-accent mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-ink">Export Backup</p>
+                <p className="text-xs text-ink-secondary mt-0.5">
+                  Download a copy of the database to your device.
+                </p>
+              </div>
             </div>
+            <Button onClick={handleBackup} loading={loading} size="sm">
+              <Database size={13} /> Export Backup
+            </Button>
           </div>
-          <Button variant="danger" size="sm" onClick={handleRestore} loading={loading}>
-            <Upload size={13} />
-            Restore from Backup
-          </Button>
+
+          <div className="border border-danger/30 rounded p-4 space-y-2 bg-danger-light/30">
+            <div className="flex items-start gap-3">
+              <Upload size={20} strokeWidth={1.5} className="text-danger mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-danger">Restore from Backup</p>
+                <p className="text-xs text-ink-secondary mt-0.5">
+                  Replace current data with a backup file. <strong>All existing data will be lost.</strong>
+                </p>
+              </div>
+            </div>
+            <Button variant="danger" size="sm" onClick={handleRestore} loading={loading}>
+              <Upload size={13} /> Restore from Backup
+            </Button>
+          </div>
         </div>
-      </div>
-    </Card>
+      </Card>
+
+      {/* ── Cloud sync ───────────────────────────────────────────────────── */}
+      <Card title="Cloud Sync">
+        <div className="space-y-4">
+          {/* Connection status banner */}
+          <div className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium ${
+            connected
+              ? 'bg-success-light text-success'
+              : 'bg-gray-50 text-ink-muted border border-border'
+          }`}>
+            {connected ? <Cloud size={14} /> : <CloudOff size={14} />}
+            {connected
+              ? `Connected to ${syncUrl || 'cloud server'}`
+              : 'Not connected to cloud'}
+            {!isOnline && (
+              <span className="ml-auto flex items-center gap-1 text-warning">
+                <WifiOff size={12} /> Offline
+              </span>
+            )}
+          </div>
+
+          {/* Server config */}
+          {!connected && (
+            <div className="space-y-3">
+              <div>
+                <label className="field-label">Server URL</label>
+                <input
+                  className="field-input"
+                  placeholder="https://your-app.up.railway.app"
+                  value={syncUrl}
+                  onChange={e => setSyncUrl(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="field-label">Username</label>
+                  <input className="field-input" placeholder="admin" value={syncUser} onChange={e => setSyncUser(e.target.value)} />
+                </div>
+                <div>
+                  <label className="field-label">Password</label>
+                  <input className="field-input" type="password" placeholder="••••••" value={syncPass} onChange={e => setSyncPass(e.target.value)} />
+                </div>
+              </div>
+              <Button onClick={connectCloud} loading={syncing} size="sm">
+                <Cloud size={13} /> Connect to Cloud
+              </Button>
+            </div>
+          )}
+
+          {/* Sync actions (when connected) */}
+          {connected && (
+            <div className="space-y-3">
+              {lastSync && (
+                <p className="text-xs text-ink-muted">Last sync: {lastSync}</p>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={pushToCloud}
+                  disabled={syncing || !isOnline}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-accent text-white rounded-lg hover:bg-accent-hover disabled:opacity-50 transition-colors"
+                >
+                  <CloudUpload size={15} />
+                  {syncing ? 'Syncing…' : 'Push to Cloud'}
+                </button>
+                <button
+                  onClick={pullFromCloud}
+                  disabled={syncing || !isOnline}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium border border-border text-ink rounded-lg hover:border-accent disabled:opacity-50 transition-colors"
+                >
+                  <CloudDownload size={15} />
+                  {syncing ? 'Syncing…' : 'Pull from Cloud'}
+                </button>
+              </div>
+              <button
+                onClick={disconnectCloud}
+                className="text-xs text-ink-muted hover:text-danger transition-colors"
+              >
+                Disconnect
+              </button>
+            </div>
+          )}
+
+          {/* Status message */}
+          {syncMsg && (
+            <div className={`flex items-start gap-2 px-3 py-2 rounded text-xs ${
+              syncStatus === 'ok'
+                ? 'bg-success-light text-success'
+                : 'bg-danger-light text-danger'
+            }`}>
+              {syncStatus === 'ok' ? <CheckCircle size={13} className="shrink-0 mt-0.5" /> : <AlertCircle size={13} className="shrink-0 mt-0.5" />}
+              {syncMsg}
+            </div>
+          )}
+
+          <p className="text-2xs text-ink-muted">
+            Push sends your local data to the cloud. Pull replaces local data with the cloud copy.
+            Use Push after entering data offline; Pull to restore on a new device.
+          </p>
+        </div>
+      </Card>
+    </div>
   )
 }
 
