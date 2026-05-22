@@ -110,6 +110,17 @@ const webApi = {
     return data.rows
   },
   bulkCreateEntries:   (data) => rpc('bulkCreateEntries', [data]),
+  getImportTemplate: async () => {
+    const res = await fetch('/api/import/template', { credentials: 'include' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload  = () => resolve(reader.result.split(',')[1])
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  },
 
   // ── Reports (data) ─────────────────────────────────────────────────────────
   getLedgerData: (cycleId) => rpc('getLedgerData', [cycleId]),

@@ -80,6 +80,22 @@ export default function Entries() {
     finally { setImporting(false) }
   }
 
+  async function downloadTemplate() {
+    try {
+      const b64   = await window.electronAPI.getImportTemplate()
+      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+      const blob  = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url   = URL.createObjectURL(blob)
+      const a     = document.createElement('a')
+      a.href      = url
+      a.download  = 'imprest-import-template.xlsx'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) { notify(err.message, 'error') }
+  }
+
   // Find active cycle
   let activeCycle = null
   for (const term of terms) {
@@ -347,6 +363,15 @@ export default function Entries() {
           <span className="text-xs text-ink-secondary">{filtered.length} entries</span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={downloadTemplate}
+            className="text-xs text-accent hover:underline flex items-center gap-1 px-1"
+            title="Download a blank Excel template"
+          >
+            <Upload size={12} />
+            Get template
+          </button>
           <Button variant="secondary" onClick={handleImportClick} disabled={isCycleClosed}>
             <Upload size={14} />
             Import Excel

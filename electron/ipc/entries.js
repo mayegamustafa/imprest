@@ -295,6 +295,12 @@ function registerEntriesHandlers(ipcMain) {
     return parseExcelRows(workbook)
   })
 
+  ipcMain.handle('entries:getImportTemplate', async () => {
+    const wb  = await buildTemplateWorkbook()
+    const buf = await wb.xlsx.writeBuffer()
+    return Buffer.from(buf).toString('base64')
+  })
+
   ipcMain.handle('entries:bulkCreate', (event, { cycle_id, rows, default_category_id }) => {
     requireRole('admin', 'accountant')
     const db = getDatabase()
@@ -348,4 +354,73 @@ function audit(db, tableName, recordId, action, oldValues, newValues) {
   )
 }
 
-module.exports = { registerEntriesHandlers, parseExcelRows }
+// ─── Import template builder ──────────────────────────────────────────────
+async function buildTemplateWorkbook() {
+  const wb = new ExcelJS.Workbook()
+  wb.creator = 'Imprest FMS'
+  wb.created = new Date()
+
+  const ws = wb.addWorksheet('Imprest Entries')
+
+  ws.columns = [
+    { header: 'DATE',         key: 'date',         width: 14 },
+    { header: 'PAYEE',        key: 'payee',        width: 32 },
+    { header: 'PURPOSE',      key: 'purpose',      width: 42 },
+    { header: 'AMOUNT',       key: 'amount',       width: 18 },
+    { header: 'BALANCE BACK', key: 'balance_back', width: 18 },
+  ]
+
+  // Style the header row
+  const headerRow = ws.getRow(1)
+  headerRow.height = 22
+  headerRow.eachCell(cell => {
+    cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 }
+    cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    cell.border    = { bottom: { style: 'medium', color: { argb: 'FFADD8E6' } } }
+  })
+
+  // Sample rows so users know exactly what format to use
+  const samples = [
+    ['01/05/2026', 'John Doe',     'Payment for stationery',          150000, 0    ],
+    ['03/05/2026', 'ABC Supplies', 'Payment for cleaning materials',    80000, 5000 ],
+    ['05/05/2026', 'Jane Smith',   'Payment for transport',             50000, 0    ],
+    ['08/05/2026', 'XYZ Store',    'Payment for scholastic materials',  65000, 0    ],
+  ]
+  samples.forEach((data, i) => {
+    const row = ws.addRow(data)
+    row.height = 18
+    // Number format for amount columns
+    row.getCell(4).numFmt = '#,##0'
+    row.getCell(5).numFmt = '#,##0'
+    // Alternate row shading
+    const bg = i % 2 === 0 ? 'FFF0F7FF' : 'FFFFFFFF'
+    row.eachCell({ includeEmpty: true }, cell => {
+      cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
+      cell.alignment = { vertical: 'middle' }
+      cell.border    = {
+        bottom: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+        right:  { style: 'thin', color: { argb: 'FFD0D0D0' } },
+      }
+    })
+  })
+
+  // Notes row
+  ws.addRow([])
+  const noteRow = ws.addRow([
+    'NOTES:',
+    'DATE: DD/MM/YYYY or YYYY-MM-DD  |  ' +
+    'BALANCE BACK: cash returned to office (leave 0 if none)  |  ' +
+    'Do NOT rename or reorder the column headers',
+  ])
+  noteRow.getCell(1).font = { bold: true, color: { argb: 'FF555555' }, size: 9 }
+  noteRow.getCell(2).font = { italic: true, color: { argb: 'FF777777' }, size: 9 }
+
+  // Freeze header row + auto-filter
+  ws.views      = [{ state: 'frozen', xSplit: 0, ySplit: 1, topLeftCell: 'A2' }]
+  ws.autoFilter = { from: 'A1', to: 'E1' }
+
+  return wb
+}
+
+module.exports = { registerEntriesHandlers, parseExcelRows, buildTemplateWorkbook }

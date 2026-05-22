@@ -99,7 +99,7 @@ const { runWithSession } = require('../electron/lib/session-context')
 const { bearerAuthMiddleware, signToken } = require('../electron/lib/jwt')
 const { generatePDF, generateExcel } = require('../electron/ipc/reports')
 const { requireRole } = require('../electron/ipc/auth')
-const { parseExcelRows } = require('../electron/ipc/entries')
+const { parseExcelRows, buildTemplateWorkbook } = require('../electron/ipc/entries')
 
 // ─── Initialise DB before doing anything else ────────────────────────────────
 try {
@@ -355,6 +355,19 @@ app.post('/api/restore', upload.single('database'), (req, res) => {
     res.json({ success: true })
   } catch (err) {
     res.status(400).json({ error: err.message })
+  }
+})
+
+// ─── /api/import/template — download blank import template ────────────────
+app.get('/api/import/template', async (req, res) => {
+  try {
+    const wb = await buildTemplateWorkbook()
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', 'attachment; filename="imprest-import-template.xlsx"')
+    await wb.xlsx.write(res)
+    res.end()
+  } catch (err) {
+    res.status(500).json({ error: err.message })
   }
 })
 
