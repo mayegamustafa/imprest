@@ -205,6 +205,14 @@ const METHOD_MAP = {
 const app = express()
 const PORT = Number(process.env.PORT) || 3001
 
+// Trust one hop of reverse proxy (Railway, nginx, etc.) so that:
+//   • req.secure reflects the *original* HTTPS connection via X-Forwarded-Proto
+//   • express-session can then set the Secure cookie attribute correctly
+// Without this, Node sees the Railway→Node leg as plain HTTP, req.secure is
+// false, and express-session silently drops the Set-Cookie header — meaning
+// no cookie ever reaches the browser and every request after login is unauthed.
+app.set('trust proxy', 1)
+
 app.use(express.json({ limit: '50mb' }))
 
 app.use(session({
@@ -217,8 +225,9 @@ app.use(session({
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,  // 7 days
-    // Railway terminates TLS, so mark cookies secure in any deployed environment
-    secure: !!(process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production'),
+    // 'auto' delegates to req.secure: true on Railway (HTTPS), false in local dev (HTTP)
+    // Requires trust proxy above to work correctly behind a reverse proxy
+    secure: 'auto',
   },
 }))
 
