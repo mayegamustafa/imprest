@@ -1,0 +1,57 @@
+# Build-and-test workflow that runs on every push and pull request.
+# This is a smoke check — it does NOT publish anything.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check all Electron files
+        run: |
+          for f in electron/main.js electron/preload.js electron/updater.js \
+                   electron/db/*.js electron/ipc/*.js electron/lib/*.js \
+                   electron/pdf/*.js electron/excel/*.js server/index.js; do
+            node --check "$f"
+          done
+
+      - name: Build renderer (Vite)
+        run: npx vite build
+
+      - name: Smoke-test schema + analytics in standalone Node
+        run: |
+          # Rebuild better-sqlite3 for Node ABI then run an in-memory test
+          npm rebuild better-sqlite3
+          node -e "
+            const fs = require('fs');
+            const Database = require('better-sqlite3');
+            const db = new Database(':memory:');
+            db.pragma('foreign_keys = ON');
+            db.exec(fs.readFileSync('electron/db/schema.sql', 'utf8'));
+            require('./electron/db/seed').seedDefaults(db);
+            const tables = db.prepare(\"SELECT name FROM sqlite_master WHERE type='table'\").all();
+            const views = db.prepare(\"SELECT name FROM sqlite_master WHERE type='view'\").all();
+            console.log('Tables:', tables.length, 'Views:', views.length);
+            if (tables.length < 10) throw new Error('schema incomplete');
+            if (views.length < 3) throw new Error('views missing');
+            console.log('✓ schema + seed OK');
+          "

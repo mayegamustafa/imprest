@@ -16,6 +16,9 @@ const { registerReportsHandlers } = require('./ipc/reports')
 const { registerBudgetsHandlers } = require('./ipc/budgets')
 const { registerAnalyticsHandlers } = require('./ipc/analytics')
 
+// Auto-updates (GitHub Releases via electron-updater) — active only in packaged builds.
+const { setupAutoUpdater, shutdownAutoUpdater } = require('./updater')
+
 let mainWindow
 
 function createWindow() {
@@ -45,6 +48,8 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
+    // Kick off auto-update check in the background (no-op in dev)
+    setupAutoUpdater(mainWindow)
   })
 
   mainWindow.on('closed', () => {
@@ -106,6 +111,7 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  shutdownAutoUpdater()
   closeDatabase()
   if (process.platform !== 'darwin') app.quit()
 })

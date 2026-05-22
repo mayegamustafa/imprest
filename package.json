@@ -1,8 +1,18 @@
 {
   "name": "imprest-fms",
   "version": "1.0.0",
-  "description": "Imprest Financial Management System for SIR APOLLO KAGGWA BOARDING PRIMARY SCHOOL",
+  "description": "Imprest Financial Management System — offline-first desktop + cloud-sync hybrid",
   "main": "electron/main.js",
+  "homepage": "https://github.com/mayegamustafa/imprest",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mayegamustafa/imprest.git"
+  },
+  "author": {
+    "name": "Mayega Mustafa",
+    "email": "mstfmyg256@gmail.com"
+  },
+  "license": "UNLICENSED",
   "scripts": {
     "predev": "npm run cleanup --silent",
     "dev": "npm run rebuild:electron --silent && concurrently -k -n vite,electron -c blue,green \"npm run dev:vite\" \"npm run dev:electron\"",
@@ -21,6 +31,9 @@
     "build:web": "vite build",
     "build:win": "vite build && electron-builder --win",
     "build:linux": "vite build && electron-builder --linux",
+    "release": "vite build && electron-builder --publish always",
+    "release:win": "vite build && electron-builder --win --publish always",
+    "release:linux": "vite build && electron-builder --linux --publish always",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -28,6 +41,7 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^9.4.3",
     "clsx": "^2.1.0",
+    "electron-updater": "^6.8.3",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "express-session": "^1.19.0",

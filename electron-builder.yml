@@ -49,3 +49,19 @@ nsis:
   uninstallerIcon: assets/icon.png
 
 asar: true
+
+# Publish settings — used by electron-updater to discover updates and by
+# electron-builder's `--publish` flag (in CI) to upload artifacts to a
+# GitHub release.
+#
+# Auth: in CI, electron-builder reads GH_TOKEN from the environment.
+# Locally, you can use `--publish never` to skip publishing.
+publish:
+  provider: github
+  owner: mayegamustafa
+  repo: imprest
+  releaseType: release   # 'draft' | 'prerelease' | 'release'
+
+# Generate latest.yml / latest-linux.yml / latest-mac.yml in dist-electron/.
+# electron-updater downloads these to decide whether a newer version exists.
+generateUpdatesFilesForAllChannels: false

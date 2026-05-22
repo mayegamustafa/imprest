@@ -111,6 +111,55 @@ Produces:
 
 ---
 
+## Release process (GitHub Releases + auto-updates)
+
+The app uses **[electron-updater](https://www.electron.build/auto-update)** + **GitHub Releases**. Cutting a new release publishes installers and triggers auto-updates for every existing user — no manual reinstall required.
+
+### One-time setup (already done in this repo)
+
+- Repo: <https://github.com/mayegamustafa/imprest>
+- `.github/workflows/release.yml` runs `electron-builder --publish always` on tag push
+- `.github/workflows/ci.yml` runs on every push/PR (lint + Vite build + schema smoke test)
+- `electron-builder.yml` has `publish: { provider: github, owner: mayegamustafa, repo: imprest }`
+- `electron-updater` is initialised in `electron/updater.js` and checks for updates 30 s after launch, then hourly
+
+### Cutting a release
+
+```bash
+# 1. Bump the version (creates a commit + a tag like v1.0.1)
+npm version patch       # or: minor / major
+
+# 2. Push commits AND the tag
+git push --follow-tags
+```
+
+GitHub Actions then:
+1. Builds the Windows .exe and Linux .AppImage / .deb installers on their respective runners
+2. Uploads them to a new GitHub Release named after the tag (e.g. `v1.0.1`)
+3. Generates `latest.yml` (Windows) and `latest-linux.yml` (Linux) — these are the manifest files electron-updater reads
+
+Within an hour, every running app installation downloads the update in the background and prompts the user to install on next restart.
+
+### Pushing the initial code to GitHub
+
+```bash
+git push -u origin main   # First push — creates the main branch on GitHub
+```
+
+You'll need a GitHub personal access token with `repo` scope (or use the `gh` CLI). After that, normal `git push` is enough.
+
+### Required GitHub repo secrets
+
+`GITHUB_TOKEN` is auto-provided to Actions runs — **no manual secret needed** for releases.
+
+If you ever want to publish from your laptop instead of CI:
+```bash
+export GH_TOKEN=ghp_yourTokenHere
+npm run release   # builds for current OS and uploads to GitHub
+```
+
+---
+
 ## Roles
 
 | Role | Can |
