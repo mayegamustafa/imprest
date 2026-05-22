@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Download, Monitor, Package, AlertCircle, ExternalLink, RefreshCw } from 'lucide-react'
+import { Download, Monitor, Package, AlertCircle, ExternalLink, RefreshCw, Terminal } from 'lucide-react'
 
 const REPO = 'mayegamustafa/imprest'
 
@@ -15,20 +15,22 @@ function parseAssets(release) {
 export default function Downloads() {
   const [release, setRelease] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [noRelease, setNoRelease] = useState(false)
   const [error, setError] = useState(null)
 
   function fetchRelease() {
     setLoading(true)
     setError(null)
+    setNoRelease(false)
     fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
       headers: { Accept: 'application/vnd.github+json' },
     })
       .then(r => {
-        if (r.status === 404) throw new Error('No release published yet.')
+        if (r.status === 404) { setNoRelease(true); setLoading(false); return null }
         if (!r.ok) throw new Error(`GitHub API returned ${r.status}`)
         return r.json()
       })
-      .then(data => { setRelease(data); setLoading(false) })
+      .then(data => { if (data) { setRelease(data); setLoading(false) } })
       .catch(err => { setError(err.message); setLoading(false) })
   }
 
@@ -57,7 +59,53 @@ export default function Downloads() {
         </div>
       )}
 
-      {/* Error */}
+      {/* No release yet */}
+      {!loading && noRelease && (
+        <div className="bg-surface border border-border rounded-lg p-5 mb-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full bg-warning-light flex items-center justify-center shrink-0">
+              <Terminal size={16} className="text-warning" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-ink mb-1">No installer published yet</p>
+              <p className="text-xs text-ink-secondary mb-4">
+                The desktop installers haven't been published yet. Run the command below in the project
+                folder — it tags the version and GitHub Actions will build and upload the installers automatically.
+              </p>
+              <div className="space-y-3 mb-4">
+                <div>
+                  <p className="text-2xs text-ink-muted uppercase tracking-wide mb-1">Run in the project folder</p>
+                  <code className="block bg-ink text-white text-xs font-mono px-3 py-2 rounded select-all">
+                    npm version patch &amp;&amp; git push --follow-tags
+                  </code>
+                </div>
+                <a
+                  href={`https://github.com/${REPO}/actions`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs text-accent hover:underline"
+                >
+                  Watch the build on GitHub Actions <ExternalLink size={11} />
+                </a>
+              </div>
+              <p className="text-xs text-ink-secondary">
+                Once the build finishes, refresh this page to see the download links.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end mt-4">
+            <button
+              onClick={fetchRelease}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent border border-accent/30 rounded hover:bg-accent/5 transition-colors"
+            >
+              <RefreshCw size={12} />
+              Refresh
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Fetch error */}
       {!loading && error && (
         <div className="bg-danger-light border border-danger/20 rounded-lg px-4 py-3 flex items-start gap-2.5 mb-4">
           <AlertCircle size={14} className="text-danger shrink-0 mt-0.5" />
@@ -65,10 +113,7 @@ export default function Downloads() {
             <p className="text-xs font-semibold text-danger">Couldn't fetch release info</p>
             <p className="text-xs text-danger/80 mt-0.5">{error}</p>
             <div className="flex items-center gap-3 mt-2">
-              <button
-                onClick={fetchRelease}
-                className="text-xs text-accent hover:underline"
-              >
+              <button onClick={fetchRelease} className="text-xs text-accent hover:underline">
                 Try again
               </button>
               <a
