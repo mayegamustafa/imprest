@@ -29,6 +29,7 @@ export default function Entries() {
   const [importRows, setImportRows]           = useState([])
   const [showImportModal, setShowImportModal] = useState(false)
   const [importCatId, setImportCatId]         = useState(null)
+  const [importCycleId, setImportCycleId]     = useState(null)
   const [importing, setImporting]             = useState(false)
   const [importSkip, setImportSkip]           = useState({})
 
@@ -56,6 +57,7 @@ export default function Entries() {
       setImportRows(rows)
       setImportSkip({})
       setImportCatId(categories[0]?.id || null)
+      setImportCycleId(activeCycleId)
       setShowImportModal(true)
     } catch (err) { notify(err.message, 'error') }
   }
@@ -66,7 +68,7 @@ export default function Entries() {
     setImporting(true)
     try {
       const result = await window.electronAPI.bulkCreateEntries({
-        cycle_id: activeCycleId,
+        cycle_id: importCycleId,
         rows: validRows,
         default_category_id: importCatId || null,
       })
@@ -776,6 +778,35 @@ export default function Entries() {
           </Button>
         </>}
       >
+        {/* Destination cycle selector */}
+        {(() => {
+          const allCycles = terms.flatMap(t =>
+            (t.cycles || []).map(c => ({ ...c, termName: t.name }))
+          )
+          const selectedCycle = allCycles.find(c => c.id === importCycleId)
+          return (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
+              <label className="field-label text-blue-800 mb-1 block">Import into cycle</label>
+              <select
+                className="field-input"
+                value={importCycleId || ''}
+                onChange={e => setImportCycleId(Number(e.target.value))}
+              >
+                {allCycles.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.termName} — {c.name}{c.status === 'closed' ? ' 🔒 (closed)' : ''}
+                  </option>
+                ))}
+              </select>
+              {selectedCycle?.status === 'closed' && (
+                <p className="text-xs text-warning mt-1 font-medium">
+                  ⚠ This cycle is closed — the import will fail. Reopen it from the Periods page first.
+                </p>
+              )}
+            </div>
+          )
+        })()}
+
         {/* Summary */}
         <div className="flex items-center gap-4 mb-3 text-sm">
           <span className="text-ink">{importRows.length} rows found</span>
