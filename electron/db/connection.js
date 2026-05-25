@@ -69,6 +69,9 @@ function runMigrations(db) {
   if (!hasColumn('entries', 'balance_back')) {
     db.exec(`ALTER TABLE entries ADD COLUMN balance_back REAL NOT NULL DEFAULT 0`)
   }
+  if (!hasColumn('entries', 'reconciled')) {
+    db.exec(`ALTER TABLE entries ADD COLUMN reconciled INTEGER NOT NULL DEFAULT 0`)
+  }
 }
 
 function closeDatabase() {

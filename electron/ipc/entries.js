@@ -352,6 +352,33 @@ function registerEntriesHandlers(ipcMain) {
     return { success: true }
   })
 
+  ipcMain.handle('entries:setReconciled', (event, id, reconciled) => {
+    requireRole('admin', 'accountant', 'viewer')
+    const db = getDatabase()
+    const row = db.prepare('SELECT id FROM entries WHERE id=?').get(id)
+    if (!row) throw new Error('Entry not found.')
+    db.prepare('UPDATE entries SET reconciled=? WHERE id=?').run(reconciled ? 1 : 0, id)
+    return { success: true }
+  })
+
+  ipcMain.handle('entries:setReconciled', (event, id, reconciled) => {
+    requireRole('admin', 'accountant')
+    const db = getDatabase()
+    const row = db.prepare('SELECT id FROM entries WHERE id=?').get(id)
+    if (!row) throw new Error('Entry not found.')
+    db.prepare('UPDATE entries SET reconciled=? WHERE id=?').run(reconciled ? 1 : 0, id)
+    return { success: true }
+  })
+
+  ipcMain.handle('entries:setReconciled', (event, id, reconciled) => {
+    requireRole('admin', 'accountant')
+    const db = getDatabase()
+    const row = db.prepare('SELECT id FROM entries WHERE id=?').get(id)
+    if (!row) throw new Error('Entry not found.')
+    db.prepare('UPDATE entries SET reconciled=? WHERE id=?').run(reconciled ? 1 : 0, id)
+    return { success: true }
+  })
+
   ipcMain.handle('entries:parseExcel', async (event, filePath) => {
     const workbook = new ExcelJS.Workbook()
     await workbook.xlsx.readFile(filePath)

@@ -41,6 +41,9 @@ export default function Entries() {
   // ── Category filter ───────────────────────────────────────────────────────
   const [categoryFilter, setCategoryFilter]   = useState(null) // null = all
 
+  // ── Reconcile mode ───────────────────────────────────────────────────────
+  const [reconcileMode, setReconcileMode]     = useState(false)
+
   const [form, setForm] = useState({
     date: formatDateInput(new Date().toISOString()),
     payee: '',
@@ -332,6 +335,19 @@ export default function Entries() {
     }
   }
 
+  async function handleReconcileToggle(entry) {
+    const newVal = entry.reconciled ? 0 : 1
+    // Optimistic update
+    setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, reconciled: newVal } : e))
+    try {
+      await window.electronAPI.setEntryReconciled(entry.id, newVal)
+    } catch (err) {
+      // Revert on failure
+      setEntries(prev => prev.map(e => e.id === entry.id ? { ...e, reconciled: entry.reconciled } : e))
+      notify(err.message, 'error')
+    }
+  }
+
   if (!activeCycleId) {
     // Diagnose which step the user is on so the message is actionable
     const hasPeriods = terms.length > 0
@@ -439,7 +455,14 @@ export default function Entries() {
             <Upload size={14} />
             Import Excel
           </Button>
-          {selectedIds.size > 0 && !isCycleClosed && (
+          <Button
+            variant={reconcileMode ? 'primary' : 'secondary'}
+            onClick={() => setReconcileMode(m => !m)}
+          >
+            <RotateCcw size={14} />
+            {reconcileMode ? 'Exit Reconcile' : 'Reconcile'}
+          </Button>
+          {selectedIds.size > 0 && !isCycleClosed && !reconcileMode && (
             <Button variant="danger" onClick={handleBulkDelete} loading={bulkDeleting}>
               <Trash2 size={14} />
               Delete selected ({selectedIds.size})
@@ -451,6 +474,27 @@ export default function Entries() {
           </Button>
         </div>
       </div>
+
+      {reconcileMode && !loading && entries.length > 0 && (() => {
+        const total = entries.length
+        const done  = entries.filter(e => e.reconciled).length
+        const missing = total - done
+        return (
+          <div className={`flex items-center justify-between px-4 py-2.5 rounded border text-sm ${
+            missing === 0
+              ? 'bg-success-light border-success/30 text-success'
+              : 'bg-warning-light border-warning/30 text-warning'
+          }`}>
+            <span>
+              <strong>Reconcile mode</strong> — check each voucher you have physically.
+            </span>
+            <span className="font-semibold tabular-nums">
+              {done} / {total} verified
+              {missing > 0 && <span className="ml-3 text-danger">{missing} missing</span>}
+            </span>
+          </div>
+        )
+      })()}
 
       {isCycleClosed && (
         <div className="bg-warning-light border border-warning/30 rounded px-4 py-2.5 text-sm flex items-center gap-2">
@@ -484,7 +528,9 @@ export default function Entries() {
           <table className="fin-table">
             <thead>
               <tr>
-                {!isCycleClosed && (
+                {reconcileMode ? (
+                  <th className="w-8 text-center" title="Physically verified">OK</th>
+                ) : !isCycleClosed ? (
                   <th className="w-8 text-center">
                     <input
                       type="checkbox"
@@ -499,7 +545,7 @@ export default function Entries() {
                       }}
                     />
                   </th>
-                )}
+                ) : null}
                 <th className="w-10">NO</th>
                 <th className="w-24">DATE</th>
                 <th>PAYEE</th>
@@ -512,7 +558,7 @@ export default function Entries() {
             <tbody>
               {/* Opening rows */}
               <tr className="bg-gray-50">
-                {!isCycleClosed && <td></td>}
+                {(reconcileMode || !isCycleClosed) && <td></td>}
                 <td className="text-center text-ink-muted">—</td>
                 <td className="text-ink-secondary text-xs font-medium">BAL B/FWD</td>
                 <td colSpan={2}></td>
@@ -521,7 +567,7 @@ export default function Entries() {
                 <td></td>
               </tr>
               <tr className="bg-gray-50">
-                {!isCycleClosed && <td></td>}
+                {(reconcileMode || !isCycleClosed) && <td></td>}
                 <td className="text-center text-ink-muted">—</td>
                 <td className="text-ink-secondary text-xs font-medium">RECEIVED</td>
                 <td colSpan={2}></td>
@@ -530,7 +576,7 @@ export default function Entries() {
                 <td></td>
               </tr>
               <tr className="bg-gray-50 border-b-2 border-border-strong">
-                {!isCycleClosed && <td></td>}
+                {(reconcileMode || !isCycleClosed) && <td></td>}
                 <td className="text-center text-ink-muted">—</td>
                 <td className="text-ink-secondary text-xs font-medium">TOTAL</td>
                 <td colSpan={2}></td>
@@ -540,12 +586,25 @@ export default function Entries() {
               </tr>
 
               {loading ? (
-                <tr><td colSpan={isCycleClosed ? 7 : 8} className="text-center py-8 text-ink-muted">Loading...</td></tr>
+                <tr><td colSpan={isCycleClosed && !reconcileMode ? 7 : 8} className="text-center py-8 text-ink-muted">Loading...</td></tr>
               ) : paged.length === 0 ? (
-                <tr><td colSpan={isCycleClosed ? 7 : 8} className="text-center py-8 text-ink-muted">No entries found.</td></tr>
+                <tr><td colSpan={isCycleClosed && !reconcileMode ? 7 : 8} className="text-center py-8 text-ink-muted">No entries found.</td></tr>
               ) : paged.map(entry => (
-                <tr key={entry.id} className={selectedIds.has(entry.id) ? 'bg-accent-light/20' : ''}>
-                  {!isCycleClosed && (
+                <tr key={entry.id} className={
+                  reconcileMode
+                    ? entry.reconciled ? 'bg-success-light/40' : 'bg-red-50'
+                    : selectedIds.has(entry.id) ? 'bg-accent-light/20' : ''
+                }>
+                  {reconcileMode ? (
+                    <td className="text-center">
+                      <input
+                        type="checkbox"
+                        className="cursor-pointer accent-green-600 w-4 h-4"
+                        checked={!!entry.reconciled}
+                        onChange={() => handleReconcileToggle(entry)}
+                      />
+                    </td>
+                  ) : !isCycleClosed ? (
                     <td className="text-center">
                       <input
                         type="checkbox"
@@ -560,7 +619,7 @@ export default function Entries() {
                         }}
                       />
                     </td>
-                  )}
+                  ) : null}
                   <td className="text-center text-ink-secondary text-xs">{entry.voucher_number}</td>
                   <td className="text-xs text-ink-secondary">{formatDate(entry.date)}</td>
                   <td className="font-medium">{entry.payee}</td>
@@ -592,7 +651,7 @@ export default function Entries() {
               {!loading && entries.length > 0 && (
                 <>
                   <tr className="border-t-2 border-border-strong bg-gray-50 font-bold">
-                    {!isCycleClosed && <td></td>}
+                    {(reconcileMode || !isCycleClosed) && <td></td>}
                     <td colSpan={4} className="text-right pr-4 text-sm">TOTAL AMOUNT SPENT</td>
                     <td className="money text-warning">{formatUGX(totalSpent)}</td>
                     <td className="money">{formatUGX(totalAvailable - totalSpent)}</td>
