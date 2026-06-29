@@ -92,6 +92,10 @@ const webApi = {
   closeCycle: (id) => rpc('closeCycle', [id]),
   reopenCycle: (id) => rpc('reopenCycle', [id]),
   deleteCycle: (id) => rpc('deleteCycle', [id]),
+  getCycleReceipts: (cycleId) => rpc('getCycleReceipts', [cycleId]),
+  createCycleReceipt: (data) => rpc('createCycleReceipt', [data]),
+  updateCycleReceipt: (id, data) => rpc('updateCycleReceipt', [id, data]),
+  deleteCycleReceipt: (id) => rpc('deleteCycleReceipt', [id]),
 
   // ── Entries ────────────────────────────────────────────────────────────────
   getEntries: (cycleId) => rpc('getEntries', [cycleId]),
