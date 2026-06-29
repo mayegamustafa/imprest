@@ -1,4 +1,5 @@
 const ExcelJS = require('exceljs')
+const { orderLedgerRows } = require('../ledger-order')
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function formatDate(d) {
@@ -80,15 +81,8 @@ async function buildLedgerWorkbook(data, school, options = {}) {
   const closing = totalAvailable - netSpent
   const broughtBackEntries = entries.filter(e => Number(e.balance_back || 0) > 0)
 
-  // Interleave mid-cycle receipts with vouchers (date order) for the running balance
-  const merged = [
-    ...entries.map(e => ({ kind: 'entry', ...e })),
-    ...receipts.map(r => ({ kind: 'receipt', ...r })),
-  ].sort((a, b) => {
-    if (a.date !== b.date) return a.date < b.date ? -1 : 1
-    if (a.kind !== b.kind) return a.kind === 'receipt' ? -1 : 1
-    return (a.id || 0) - (b.id || 0)
-  })
+  // Receipts sit at their manual position (or by date when unplaced)
+  const merged = orderLedgerRows(entries, receipts)
 
   ws.mergeCells(`A${row}:${lastColLetter}${row}`)
   const summary = ws.getCell(`A${row}`)

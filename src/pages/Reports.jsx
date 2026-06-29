@@ -6,6 +6,7 @@ import FilterBar from '../components/FilterBar'
 import useFilterParams from '../hooks/useFilterParams'
 import useAppStore from '../store/appStore'
 import { periodLabel, formatUGX } from '../lib/formatters'
+import { orderLedgerRows } from '../lib/ledger'
 
 const REPORT_TYPES = [
   { value: 'ledger',            label: 'Imprest Ledger',        scope: 'cycle' },
@@ -336,14 +337,7 @@ async function buildLedgerPreviewHTML(data, opts = {}) {
   const closing = totalAvailable - netSpent
   const broughtBackEntries = entries.filter(e => Number(e.balance_back || 0) > 0)
 
-  const merged = [
-    ...entries.map(e => ({ kind: 'entry', ...e })),
-    ...receipts.map(r => ({ kind: 'receipt', ...r })),
-  ].sort((a, b) => {
-    if (a.date !== b.date) return a.date < b.date ? -1 : 1
-    if (a.kind !== b.kind) return a.kind === 'receipt' ? -1 : 1
-    return (a.id || 0) - (b.id || 0)
-  })
+  const merged = orderLedgerRows(entries, receipts)
   let runBal = initialAvailable
   let seq = 0
   const rows = merged.map(item => {

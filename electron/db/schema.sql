@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS cycle_receipts (
   date       TEXT    NOT NULL,
   amount     REAL    NOT NULL CHECK(amount > 0),
   source     TEXT,
+  -- Manual order key in the ledger. NULL = auto-placed by date (default).
+  -- Set to a number when the user drags the receipt to a specific position.
+  position   REAL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

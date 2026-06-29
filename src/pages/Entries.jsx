@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, Lock, FolderPlus, Layers, RotateCcw, Upload, Wallet } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, Lock, FolderPlus, Layers, RotateCcw, Upload, Wallet, GripVertical } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
@@ -8,9 +8,17 @@ import SearchableSelect from '../components/ui/SearchableSelect'
 import useAppStore from '../store/appStore'
 import { formatUGX, formatDate, formatDateInput } from '../lib/formatters'
 import { validateEntry, validateSplits } from '../lib/validators'
+import { orderLedgerRows, dropPosition } from '../lib/ledger'
 
 const PAGE_SIZE = 50
 const PURPOSE_PREFIX = 'Payment for '
+
+// Green inset line marking where a dragged receipt will drop (top/bottom edge).
+function dropIndicatorStyle(before) {
+  return before
+    ? { boxShadow: 'inset 0 2px 0 0 #16a34a' }
+    : { boxShadow: 'inset 0 -2px 0 0 #16a34a' }
+}
 
 export default function Entries() {
   const navigate = useNavigate()
@@ -50,6 +58,8 @@ export default function Entries() {
   const [editReceipt, setEditReceipt]         = useState(null)
   const [savingReceipt, setSavingReceipt]     = useState(false)
   const [confirmDeleteReceipt, setConfirmDeleteReceipt] = useState(null)
+  const [draggingReceiptId, setDraggingReceiptId] = useState(null)
+  const [dropTarget, setDropTarget]           = useState(null) // { key, before }
   const [receiptForm, setReceiptForm]         = useState({
     date: formatDateInput(new Date().toISOString()),
     amount: '',
@@ -162,18 +172,10 @@ export default function Entries() {
     : 0
   const totalAvailable = initialAvailable + additionalReceived
 
-  const merged = [
-    ...entries.map(e => ({ kind: 'entry', ...e })),
-    ...receipts.map(r => ({ kind: 'receipt', ...r })),
-  ].sort((a, b) => {
-    if (a.date !== b.date) return a.date < b.date ? -1 : 1
-    // money in before money out on the same day
-    if (a.kind !== b.kind) return a.kind === 'receipt' ? -1 : 1
-    return (a.id || 0) - (b.id || 0)
-  })
+  const ordered = orderLedgerRows(entries, receipts)
 
   let runningBalance = initialAvailable
-  const ledgerRows = merged.map(row => {
+  const ledgerRows = ordered.map(row => {
     if (row.kind === 'receipt') {
       runningBalance += Number(row.amount || 0)
     } else {
@@ -197,6 +199,8 @@ export default function Entries() {
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
   const pagedEntries = paged.filter(r => r.kind === 'entry')
+  // Dragging receipts only makes sense in the unfiltered, single-page-ordered view
+  const canDrag = !isCycleClosed && !reconcileMode && !search && !categoryFilter
   const totalSpent = entries.reduce((s, e) => s + e.amount, 0)
   const totalBroughtBack = entries.reduce((s, e) => s + Number(e.balance_back || 0), 0)
   // When a category filter is active, compute spending just for that category
@@ -434,6 +438,31 @@ export default function Entries() {
     } catch (err) {
       notify(err.message, 'error')
     }
+  }
+
+  // Drag a receipt to a new spot in the ledger; balances recompute from order.
+  async function handleReceiptDrop(targetRow, before) {
+    const id = draggingReceiptId
+    setDraggingReceiptId(null)
+    setDropTarget(null)
+    if (id == null || !targetRow) return
+    const newPos = dropPosition(ledgerRows, targetRow._key, before)
+    if (newPos == null || Number.isNaN(newPos)) return
+    try {
+      await window.electronAPI.setCycleReceiptPosition(id, newPos)
+      loadEntries()
+      refreshTerms()
+    } catch (err) {
+      notify(err.message, 'error')
+    }
+  }
+
+  function handleRowDragOver(e, row) {
+    if (draggingReceiptId == null) return
+    e.preventDefault()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const before = (e.clientY - rect.top) < rect.height / 2
+    setDropTarget({ key: row._key, before })
   }
 
   async function handleReconcileToggle(entry) {
@@ -695,8 +724,21 @@ export default function Entries() {
               ) : paged.length === 0 ? (
                 <tr><td colSpan={isCycleClosed && !reconcileMode ? 7 : 8} className="text-center py-8 text-ink-muted">No entries found.</td></tr>
               ) : paged.map(row => row.kind === 'receipt' ? (
-                <tr key={`r-${row.id}`} className="bg-success-light/30">
-                  {(reconcileMode || !isCycleClosed) && <td></td>}
+                <tr
+                  key={`r-${row.id}`}
+                  className={`bg-success-light/30 ${draggingReceiptId === row.id ? 'opacity-40' : ''}`}
+                  style={dropTarget?.key === row._key ? dropIndicatorStyle(dropTarget.before) : undefined}
+                  draggable={canDrag}
+                  onDragStart={canDrag ? (e) => { setDraggingReceiptId(row.id); e.dataTransfer.effectAllowed = 'move' } : undefined}
+                  onDragEnd={() => { setDraggingReceiptId(null); setDropTarget(null) }}
+                  onDragOver={(e) => handleRowDragOver(e, row)}
+                  onDrop={(e) => { e.preventDefault(); handleReceiptDrop(row, dropTarget?.before ?? true) }}
+                >
+                  {(reconcileMode || !isCycleClosed) && (
+                    <td className="text-center">
+                      {canDrag && <GripVertical size={13} className="text-success/60 cursor-grab inline" />}
+                    </td>
+                  )}
                   <td className="text-center text-success font-bold">+</td>
                   <td className="text-xs text-ink-secondary">{formatDate(row.date)}</td>
                   <td className="font-medium text-success">Money received</td>
@@ -723,11 +765,17 @@ export default function Entries() {
                   </td>
                 </tr>
               ) : (
-                <tr key={`e-${row.id}`} className={
-                  reconcileMode
-                    ? row.reconciled ? 'bg-success-light/40' : 'bg-red-50'
-                    : selectedIds.has(row.id) ? 'bg-accent-light/20' : ''
-                }>
+                <tr
+                  key={`e-${row.id}`}
+                  className={
+                    reconcileMode
+                      ? row.reconciled ? 'bg-success-light/40' : 'bg-red-50'
+                      : selectedIds.has(row.id) ? 'bg-accent-light/20' : ''
+                  }
+                  style={dropTarget?.key === row._key ? dropIndicatorStyle(dropTarget.before) : undefined}
+                  onDragOver={(e) => handleRowDragOver(e, row)}
+                  onDrop={(e) => { e.preventDefault(); handleReceiptDrop(row, dropTarget?.before ?? true) }}
+                >
                   {reconcileMode ? (
                     <td className="text-center">
                       <input

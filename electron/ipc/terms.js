@@ -178,10 +178,11 @@ function registerTermsHandlers(ipcMain) {
     assertCycleEditable(db, data.cycle_id)
     const amount = Number(data.amount)
     if (!(amount > 0)) throw new Error('Amount must be greater than zero.')
+    const position = data.position == null ? null : Number(data.position)
     const result = db.prepare(`
-      INSERT INTO cycle_receipts (cycle_id, date, amount, source)
-      VALUES (?,?,?,?)
-    `).run(data.cycle_id, data.date, amount, data.source?.trim() || null)
+      INSERT INTO cycle_receipts (cycle_id, date, amount, source, position)
+      VALUES (?,?,?,?,?)
+    `).run(data.cycle_id, data.date, amount, data.source?.trim() || null, position)
     audit(db, 'cycle_receipts', result.lastInsertRowid, 'INSERT', null, data)
     return { id: result.lastInsertRowid, success: true }
   })
@@ -198,6 +199,19 @@ function registerTermsHandlers(ipcMain) {
       'UPDATE cycle_receipts SET date=?, amount=?, source=? WHERE id=?'
     ).run(data.date, amount, data.source?.trim() || null, id)
     audit(db, 'cycle_receipts', id, 'UPDATE', old, data)
+    return { success: true }
+  })
+
+  // Manual drag position — set/clear the ledger order key for a receipt.
+  ipcMain.handle('receipts:setPosition', (event, id, position) => {
+    requireRole('admin', 'accountant')
+    const db = getDatabase()
+    const old = db.prepare('SELECT * FROM cycle_receipts WHERE id=?').get(id)
+    if (!old) throw new Error('Receipt not found.')
+    assertCycleEditable(db, old.cycle_id)
+    const pos = position == null ? null : Number(position)
+    db.prepare('UPDATE cycle_receipts SET position=? WHERE id=?').run(pos, id)
+    audit(db, 'cycle_receipts', id, 'UPDATE', old, { position: pos })
     return { success: true }
   })
 

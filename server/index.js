@@ -175,6 +175,7 @@ const METHOD_MAP = {
   getCycleReceipts: 'receipts:getByCycle',
   createCycleReceipt: 'receipts:create',
   updateCycleReceipt: 'receipts:update',
+  setCycleReceiptPosition: 'receipts:setPosition',
   deleteCycleReceipt: 'receipts:delete',
 
   // Entries

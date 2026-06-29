@@ -72,6 +72,15 @@ function runMigrations(db) {
   if (!hasColumn('entries', 'reconciled')) {
     db.exec(`ALTER TABLE entries ADD COLUMN reconciled INTEGER NOT NULL DEFAULT 0`)
   }
+  // cycle_receipts.position — manual ledger ordering for dragged receipts.
+  // The table is created by schema.sql; older DBs that already have it need
+  // the column added.
+  const tableExists = db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='cycle_receipts'"
+  ).get()
+  if (tableExists && !hasColumn('cycle_receipts', 'position')) {
+    db.exec(`ALTER TABLE cycle_receipts ADD COLUMN position REAL`)
+  }
 }
 
 function closeDatabase() {

@@ -1,3 +1,5 @@
+const { orderLedgerRows } = require('../ledger-order')
+
 function formatUGX(n) {
   if (!n && n !== 0) return ''
   return Number(n).toLocaleString('en-UG', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -49,16 +51,9 @@ function buildLedgerHTML(data, school, options = {}) {
   const closingBalance = totalAvailable - netSpent
   const broughtBackEntries = entries.filter(e => Number(e.balance_back || 0) > 0)
 
-  // Build running balance rows. Mid-cycle receipts are interleaved by date as
-  // credit lines that lift the running balance from their date onward.
-  const merged = [
-    ...entries.map(e => ({ kind: 'entry', ...e })),
-    ...receipts.map(r => ({ kind: 'receipt', ...r })),
-  ].sort((a, b) => {
-    if (a.date !== b.date) return a.date < b.date ? -1 : 1
-    if (a.kind !== b.kind) return a.kind === 'receipt' ? -1 : 1
-    return (a.id || 0) - (b.id || 0)
-  })
+  // Build running balance rows. Mid-cycle receipts sit at their manual position
+  // (or by date when unplaced) as credit lines lifting the running balance.
+  const merged = orderLedgerRows(entries, receipts)
   let runningBalance = initialAvailable
   let seq = 0
   const rows = merged.map(row => {
