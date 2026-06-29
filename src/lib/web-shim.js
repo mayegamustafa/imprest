@@ -105,6 +105,7 @@ const webApi = {
   deleteEntry:         (id)   => rpc('deleteEntry', [id]),
   bulkDeleteEntries:   (data) => rpc('bulkDeleteEntries', [data]),
   setEntryReconciled:  (id, val) => rpc('setEntryReconciled', [id, val]),
+  setEntryPosition:    (id, position) => rpc('setEntryPosition', [id, position]),
   parseExcelFile: async (file) => {
     const fd = new FormData()
     fd.append('file', file)

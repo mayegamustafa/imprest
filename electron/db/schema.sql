@@ -90,6 +90,9 @@ CREATE TABLE IF NOT EXISTS entries (
   purpose        TEXT    NOT NULL,
   amount         REAL    NOT NULL CHECK(amount > 0),
   balance_back   REAL    NOT NULL DEFAULT 0 CHECK(balance_back >= 0),
+  -- Manual ledger order key. NULL = auto-placed by date (default). Set when the
+  -- user drags the voucher to a specific position. Independent of voucher_number.
+  position       REAL,
   created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(cycle_id, voucher_number)

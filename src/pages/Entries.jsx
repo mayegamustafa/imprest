@@ -58,7 +58,7 @@ export default function Entries() {
   const [editReceipt, setEditReceipt]         = useState(null)
   const [savingReceipt, setSavingReceipt]     = useState(false)
   const [confirmDeleteReceipt, setConfirmDeleteReceipt] = useState(null)
-  const [draggingReceiptId, setDraggingReceiptId] = useState(null)
+  const [draggingRow, setDraggingRow]         = useState(null) // { kind, id }
   const [dropTarget, setDropTarget]           = useState(null) // { key, before }
   const [receiptForm, setReceiptForm]         = useState({
     date: formatDateInput(new Date().toISOString()),
@@ -440,16 +440,23 @@ export default function Entries() {
     }
   }
 
-  // Drag a receipt to a new spot in the ledger; balances recompute from order.
-  async function handleReceiptDrop(targetRow, before) {
-    const id = draggingReceiptId
-    setDraggingReceiptId(null)
+  // Drag any ledger row (voucher or receipt) to a new spot; balances recompute
+  // from the new order. Voucher numbers are unaffected.
+  async function handleRowDrop(targetRow, before) {
+    const dragged = draggingRow
+    setDraggingRow(null)
     setDropTarget(null)
-    if (id == null || !targetRow) return
+    if (!dragged || !targetRow) return
+    // Dropping onto itself is a no-op
+    if (dragged.kind === targetRow.kind && dragged.id === targetRow.id) return
     const newPos = dropPosition(ledgerRows, targetRow._key, before)
     if (newPos == null || Number.isNaN(newPos)) return
     try {
-      await window.electronAPI.setCycleReceiptPosition(id, newPos)
+      if (dragged.kind === 'receipt') {
+        await window.electronAPI.setCycleReceiptPosition(dragged.id, newPos)
+      } else {
+        await window.electronAPI.setEntryPosition(dragged.id, newPos)
+      }
       loadEntries()
       refreshTerms()
     } catch (err) {
@@ -458,12 +465,20 @@ export default function Entries() {
   }
 
   function handleRowDragOver(e, row) {
-    if (draggingReceiptId == null) return
+    if (!draggingRow) return
     e.preventDefault()
     const rect = e.currentTarget.getBoundingClientRect()
     const before = (e.clientY - rect.top) < rect.height / 2
     setDropTarget({ key: row._key, before })
   }
+
+  const dragProps = (row) => canDrag ? {
+    draggable: true,
+    onDragStart: (e) => { setDraggingRow({ kind: row.kind, id: row.id }); e.dataTransfer.effectAllowed = 'move' },
+    onDragEnd: () => { setDraggingRow(null); setDropTarget(null) },
+    onDragOver: (e) => handleRowDragOver(e, row),
+    onDrop: (e) => { e.preventDefault(); handleRowDrop(row, dropTarget?.before ?? true) },
+  } : {}
 
   async function handleReconcileToggle(entry) {
     const newVal = entry.reconciled ? 0 : 1
@@ -726,13 +741,9 @@ export default function Entries() {
               ) : paged.map(row => row.kind === 'receipt' ? (
                 <tr
                   key={`r-${row.id}`}
-                  className={`bg-success-light/30 ${draggingReceiptId === row.id ? 'opacity-40' : ''}`}
+                  className={`bg-success-light/30 ${draggingRow?.kind === 'receipt' && draggingRow?.id === row.id ? 'opacity-40' : ''}`}
                   style={dropTarget?.key === row._key ? dropIndicatorStyle(dropTarget.before) : undefined}
-                  draggable={canDrag}
-                  onDragStart={canDrag ? (e) => { setDraggingReceiptId(row.id); e.dataTransfer.effectAllowed = 'move' } : undefined}
-                  onDragEnd={() => { setDraggingReceiptId(null); setDropTarget(null) }}
-                  onDragOver={(e) => handleRowDragOver(e, row)}
-                  onDrop={(e) => { e.preventDefault(); handleReceiptDrop(row, dropTarget?.before ?? true) }}
+                  {...dragProps(row)}
                 >
                   {(reconcileMode || !isCycleClosed) && (
                     <td className="text-center">
@@ -767,14 +778,13 @@ export default function Entries() {
               ) : (
                 <tr
                   key={`e-${row.id}`}
-                  className={
+                  className={`${
                     reconcileMode
                       ? row.reconciled ? 'bg-success-light/40' : 'bg-red-50'
                       : selectedIds.has(row.id) ? 'bg-accent-light/20' : ''
-                  }
+                  } ${draggingRow?.kind === 'entry' && draggingRow?.id === row.id ? 'opacity-40' : ''}`}
                   style={dropTarget?.key === row._key ? dropIndicatorStyle(dropTarget.before) : undefined}
-                  onDragOver={(e) => handleRowDragOver(e, row)}
-                  onDrop={(e) => { e.preventDefault(); handleReceiptDrop(row, dropTarget?.before ?? true) }}
+                  {...dragProps(row)}
                 >
                   {reconcileMode ? (
                     <td className="text-center">
@@ -787,18 +797,21 @@ export default function Entries() {
                     </td>
                   ) : !isCycleClosed ? (
                     <td className="text-center">
-                      <input
-                        type="checkbox"
-                        className="cursor-pointer"
-                        checked={selectedIds.has(row.id)}
-                        onChange={e => {
-                          setSelectedIds(prev => {
-                            const s = new Set(prev)
-                            e.target.checked ? s.add(row.id) : s.delete(row.id)
-                            return s
-                          })
-                        }}
-                      />
+                      <div className="flex items-center justify-center gap-1">
+                        {canDrag && <GripVertical size={13} className="text-ink-muted/50 cursor-grab" />}
+                        <input
+                          type="checkbox"
+                          className="cursor-pointer"
+                          checked={selectedIds.has(row.id)}
+                          onChange={e => {
+                            setSelectedIds(prev => {
+                              const s = new Set(prev)
+                              e.target.checked ? s.add(row.id) : s.delete(row.id)
+                              return s
+                            })
+                          }}
+                        />
+                      </div>
                     </td>
                   ) : null}
                   <td className="text-center text-ink-secondary text-xs">{row.voucher_number}</td>

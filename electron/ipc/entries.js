@@ -379,6 +379,19 @@ function registerEntriesHandlers(ipcMain) {
     return { success: true }
   })
 
+  // Manual drag position — set/clear the ledger order key for a voucher.
+  // Independent of voucher_number; only affects ledger display order + balance.
+  ipcMain.handle('entries:setPosition', (event, id, position) => {
+    requireRole('admin', 'accountant')
+    const db = getDatabase()
+    const row = db.prepare('SELECT cycle_id FROM entries WHERE id=?').get(id)
+    if (!row) throw new Error('Entry not found.')
+    assertCycleEditable(db, row.cycle_id)
+    const pos = position == null ? null : Number(position)
+    db.prepare('UPDATE entries SET position=? WHERE id=?').run(pos, id)
+    return { success: true }
+  })
+
   ipcMain.handle('entries:parseExcel', async (event, filePath) => {
     const workbook = new ExcelJS.Workbook()
     await workbook.xlsx.readFile(filePath)

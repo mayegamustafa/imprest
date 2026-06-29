@@ -185,6 +185,7 @@ const METHOD_MAP = {
   deleteEntry: 'entries:delete',
   bulkDeleteEntries: 'entries:bulkDelete',
   setEntryReconciled: 'entries:setReconciled',
+  setEntryPosition: 'entries:setPosition',
   bulkCreateEntries: 'entries:bulkCreate',
 
   // Reports (data only — file exports use dedicated endpoints)

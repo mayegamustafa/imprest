@@ -2,27 +2,25 @@
 // report builders. Keep the ordering logic in sync with the frontend so the
 // printed/exported ledger matches what's on screen.
 function orderLedgerRows(entries, receipts) {
-  const sortedEntries = [...entries].sort((a, b) =>
-    a.date < b.date ? -1 : a.date > b.date ? 1 : (a.id || 0) - (b.id || 0)
+  const all = [
+    ...entries.map(e => ({ ...e, kind: 'entry' })),
+    ...receipts.map(r => ({ ...r, kind: 'receipt' })),
+  ]
+
+  const dateSorted = [...all].sort((a, b) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 :
+    a.kind === b.kind ? (a.id || 0) - (b.id || 0) : a.kind === 'receipt' ? -1 : 1
   )
+  const base = new Map()
+  dateSorted.forEach((r, i) => base.set(r.kind + '-' + r.id, i + 1))
 
-  const rows = sortedEntries.map((e, i) => ({ ...e, kind: 'entry', _key: i + 1 }))
+  const rows = all.map(r => {
+    const b = base.get(r.kind + '-' + r.id)
+    const key = (r.position != null && r.position !== '') ? Number(r.position) : b
+    return { ...r, _key: key, _base: b }
+  })
 
-  for (const r of receipts) {
-    let key
-    if (r.position != null && r.position !== '') {
-      key = Number(r.position)
-    } else {
-      const k = sortedEntries.filter(e => e.date < r.date).length
-      key = k + 0.5
-    }
-    rows.push({ ...r, kind: 'receipt', _key: key })
-  }
-
-  rows.sort((a, b) =>
-    a._key - b._key ||
-    (a.kind === b.kind ? (a.id || 0) - (b.id || 0) : a.kind === 'entry' ? -1 : 1)
-  )
+  rows.sort((a, b) => a._key - b._key || a._base - b._base)
   return rows
 }
 

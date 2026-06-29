@@ -1,32 +1,33 @@
-// Builds the ordered ledger: vouchers (date order) with mid-cycle receipts
-// placed by their manual `position` when set, otherwise auto-placed by date.
+// Builds the ordered ledger from vouchers + mid-cycle receipts. Any row may be
+// dragged: a row with a manual `position` uses it as its sort key; unplaced rows
+// fall back to their position in date order. Both kinds share one key space, so
+// vouchers and receipts can be freely interleaved by the user.
 //
-// Each returned row is tagged `kind: 'entry' | 'receipt'` and carries a numeric
-// `_key` used for ordering and for computing drag drop positions. Entries get
-// integer keys (1..N in date order); receipts get their stored `position`, or
-// `k + 0.5` (after the k-th earlier-dated voucher) when unplaced.
+// Each returned row is tagged `kind: 'entry' | 'receipt'` and carries `_key`
+// (effective sort key) and `_base` (its 1..M index in date order, used as a
+// stable tiebreak and as the fallback key when unplaced).
 export function orderLedgerRows(entries, receipts) {
-  const sortedEntries = [...entries].sort((a, b) =>
-    a.date < b.date ? -1 : a.date > b.date ? 1 : (a.id || 0) - (b.id || 0)
+  const all = [
+    ...entries.map(e => ({ ...e, kind: 'entry' })),
+    ...receipts.map(r => ({ ...r, kind: 'receipt' })),
+  ]
+
+  // Baseline: date order over ALL rows (receipt before entry on the same day —
+  // money in, then out). Gives each row a stable integer slot 1..M.
+  const dateSorted = [...all].sort((a, b) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 :
+    a.kind === b.kind ? (a.id || 0) - (b.id || 0) : a.kind === 'receipt' ? -1 : 1
   )
+  const base = new Map()
+  dateSorted.forEach((r, i) => base.set(r.kind + '-' + r.id, i + 1))
 
-  const rows = sortedEntries.map((e, i) => ({ ...e, kind: 'entry', _key: i + 1 }))
+  const rows = all.map(r => {
+    const b = base.get(r.kind + '-' + r.id)
+    const key = (r.position != null && r.position !== '') ? Number(r.position) : b
+    return { ...r, _key: key, _base: b }
+  })
 
-  for (const r of receipts) {
-    let key
-    if (r.position != null && r.position !== '') {
-      key = Number(r.position)
-    } else {
-      const k = sortedEntries.filter(e => e.date < r.date).length
-      key = k + 0.5
-    }
-    rows.push({ ...r, kind: 'receipt', _key: key })
-  }
-
-  rows.sort((a, b) =>
-    a._key - b._key ||
-    (a.kind === b.kind ? (a.id || 0) - (b.id || 0) : a.kind === 'entry' ? -1 : 1)
-  )
+  rows.sort((a, b) => a._key - b._key || a._base - b._base)
   return rows
 }
 

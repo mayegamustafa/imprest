@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteEntry:         (id)   => ipcRenderer.invoke('entries:delete', id),
   bulkDeleteEntries:   (data) => ipcRenderer.invoke('entries:bulkDelete', data),
   setEntryReconciled:  (id, val) => ipcRenderer.invoke('entries:setReconciled', id, val),
+  setEntryPosition:    (id, position) => ipcRenderer.invoke('entries:setPosition', id, position),
   parseExcelFile:      (path) => ipcRenderer.invoke('entries:parseExcel', path),
   bulkCreateEntries:   (data) => ipcRenderer.invoke('entries:bulkCreate', data),
   getImportTemplate:   ()     => ipcRenderer.invoke('entries:getImportTemplate'),
