@@ -59,6 +59,20 @@ CREATE TABLE IF NOT EXISTS imprest_cycles (
   UNIQUE(term_id, cycle_number)
 );
 
+-- ── Additional receipts within a cycle (mid-cycle top-ups) ────────────────────
+-- Money received AFTER a cycle has started (e.g. an extra drawdown during the
+-- 5th imprest, before the 6th is opened). Each row is a dated credit that lifts
+-- the running balance from its date onward. Total available for a cycle =
+-- opening_balance + amount_received + SUM(cycle_receipts.amount).
+CREATE TABLE IF NOT EXISTS cycle_receipts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  cycle_id   INTEGER NOT NULL REFERENCES imprest_cycles(id) ON DELETE CASCADE,
+  date       TEXT    NOT NULL,
+  amount     REAL    NOT NULL CHECK(amount > 0),
+  source     TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ── Expenditure entries (vouchers) ────────────────────────────────────────────
 -- balance_back: amount returned unspent from this voucher (e.g. cashier got
 -- 100,000 advance, only spent 70,000, returned 30,000). Net spent = amount -
@@ -147,6 +161,7 @@ CREATE INDEX IF NOT EXISTS idx_entries_date     ON entries(date);
 CREATE INDEX IF NOT EXISTS idx_splits_entry     ON entry_category_splits(entry_id);
 CREATE INDEX IF NOT EXISTS idx_splits_category  ON entry_category_splits(category_id);
 CREATE INDEX IF NOT EXISTS idx_cycles_term      ON imprest_cycles(term_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_cycle    ON cycle_receipts(cycle_id);
 CREATE INDEX IF NOT EXISTS idx_audit_table      ON audit_log(table_name, record_id);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp  ON audit_log(timestamp);
 

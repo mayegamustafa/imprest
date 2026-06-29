@@ -41,6 +41,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   reopenCycle: (id) => ipcRenderer.invoke('cycles:reopen', id),
   deleteCycle: (id) => ipcRenderer.invoke('cycles:delete', id),
 
+  getCycleReceipts: (cycleId) => ipcRenderer.invoke('receipts:getByCycle', cycleId),
+  createCycleReceipt: (data) => ipcRenderer.invoke('receipts:create', data),
+  updateCycleReceipt: (id, data) => ipcRenderer.invoke('receipts:update', id, data),
+  deleteCycleReceipt: (id) => ipcRenderer.invoke('receipts:delete', id),
+
   // ── Entries ──────────────────────────────────────────────────────────────────
   getEntries: (cycleId) => ipcRenderer.invoke('entries:getByCycle', cycleId),
   createEntry: (data) => ipcRenderer.invoke('entries:create', data),

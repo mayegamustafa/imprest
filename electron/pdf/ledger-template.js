@@ -34,24 +34,41 @@ function periodLabel(cycle) {
 }
 
 function buildLedgerHTML(data, school, options = {}) {
-  const { cycle, entries, signatories } = data
+  const { cycle, entries, receipts = [], signatories } = data
   const schoolName = school?.name || 'SCHOOL'
   const location = school?.location || ''
   // includeBalance: show the running BALANCE column (default true)
   const includeBalance = options.includeBalance !== false
 
-  const totalAvailable = cycle.opening_balance + cycle.amount_received
+  const additionalReceived = receipts.reduce((s, r) => s + Number(r.amount || 0), 0)
+  const initialAvailable = cycle.opening_balance + cycle.amount_received
+  const totalAvailable = initialAvailable + additionalReceived
   const totalSpent = entries.reduce((s, e) => s + e.amount, 0)
   const totalBroughtBack = entries.reduce((s, e) => s + Number(e.balance_back || 0), 0)
   const netSpent = totalSpent - totalBroughtBack
   const closingBalance = totalAvailable - netSpent
   const broughtBackEntries = entries.filter(e => Number(e.balance_back || 0) > 0)
 
-  // Build running balance rows
-  let runningBalance = totalAvailable
-  const rows = entries.map((e, idx) => {
-    runningBalance -= e.amount
-    return { ...e, seq: idx + 1, runningBalance }
+  // Build running balance rows. Mid-cycle receipts are interleaved by date as
+  // credit lines that lift the running balance from their date onward.
+  const merged = [
+    ...entries.map(e => ({ kind: 'entry', ...e })),
+    ...receipts.map(r => ({ kind: 'receipt', ...r })),
+  ].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1
+    if (a.kind !== b.kind) return a.kind === 'receipt' ? -1 : 1
+    return (a.id || 0) - (b.id || 0)
+  })
+  let runningBalance = initialAvailable
+  let seq = 0
+  const rows = merged.map(row => {
+    if (row.kind === 'receipt') {
+      runningBalance += Number(row.amount || 0)
+      return { ...row, runningBalance }
+    }
+    runningBalance -= row.amount
+    seq += 1
+    return { ...row, seq, runningBalance }
   })
 
   const periodLbl = periodLabel(cycle)
@@ -65,7 +82,16 @@ function buildLedgerHTML(data, school, options = {}) {
     </div>
   `).join('')
 
-  const entryRows = rows.map(e => `
+  const entryRows = rows.map(e => e.kind === 'receipt' ? `
+    <tr>
+      <td class="num">+</td>
+      <td class="center">${formatDate(e.date)}</td>
+      <td>MONEY RECEIVED</td>
+      <td style="font-style:italic">${esc(upper(e.source || 'ADDITIONAL FUNDS RECEIVED'))}</td>
+      <td class="money" style="color:#1F4F8B">+${formatUGX(e.amount)}</td>
+      ${includeBalance ? `<td class="money">${formatUGX(e.runningBalance)}</td>` : ''}
+    </tr>
+  ` : `
     <tr>
       <td class="num">${e.seq}</td>
       <td class="center">${formatDate(e.date)}</td>
@@ -124,6 +150,7 @@ function buildLedgerHTML(data, school, options = {}) {
     <div class="summary">
       BFWD:&nbsp;${formatUGX(cycle.opening_balance)}&nbsp;&nbsp;&nbsp;
       AMOUNT RECEIVED:&nbsp;${formatUGX(cycle.amount_received)}&nbsp;&nbsp;&nbsp;
+      ${additionalReceived > 0 ? `ADDITIONAL RECEIVED:&nbsp;${formatUGX(additionalReceived)}&nbsp;&nbsp;&nbsp;` : ''}
       AMOUNT SPENT:&nbsp;${formatUGX(totalSpent)}/=&nbsp;&nbsp;&nbsp;
       BAL:&nbsp;${formatUGX(closingBalance)}/=
     </div>
@@ -153,7 +180,7 @@ function buildLedgerHTML(data, school, options = {}) {
       </tr>
       <tr class="opening">
         <td></td><td class="center">TOTAL</td><td></td><td></td>
-        <td class="money">${formatUGX(totalAvailable)}</td>
+        <td class="money">${formatUGX(initialAvailable)}</td>
         ${includeBalance ? '<td></td>' : ''}
       </tr>
       ${entryRows}
@@ -166,7 +193,7 @@ function buildLedgerHTML(data, school, options = {}) {
         <tr><td colspan="${includeBalance ? 6 : 5}" style="background:#f0f4f8; padding:4px 8px; font-size:8pt; font-weight:bold; text-transform:uppercase;">Balances Brought Back</td></tr>
         ${broughtBackEntries.map(e => `
           <tr style="background:#fafcfd">
-            <td class="num">${rows.find(r => r.id === e.id)?.seq ?? ''}</td>
+            <td class="num">${rows.find(r => r.kind === 'entry' && r.id === e.id)?.seq ?? ''}</td>
             <td class="center">${formatDate(e.date)}</td>
             <td>${esc(upper(e.payee))}</td>
             <td style="font-style:italic; color:#555">UNSPENT — RETURNED</td>
@@ -190,7 +217,10 @@ function buildLedgerHTML(data, school, options = {}) {
 
   <div class="accountability">
     <h3>Accountability</h3>
-    <div class="acc-row"><span>Total Received:</span><span>${formatUGX(totalAvailable)}/=</span></div>
+    <div class="acc-row"><span>Balance B/Fwd:</span><span>${formatUGX(cycle.opening_balance)}/=</span></div>
+    <div class="acc-row"><span>Amount Received:</span><span>${formatUGX(cycle.amount_received)}/=</span></div>
+    ${additionalReceived > 0 ? `<div class="acc-row"><span>Additional Received (mid-cycle):</span><span>${formatUGX(additionalReceived)}/=</span></div>` : ''}
+    <div class="acc-row" style="border-top: 1px solid #999; padding-top: 3px; margin-top: 3px"><span>Total Available:</span><span>${formatUGX(totalAvailable)}/=</span></div>
     <div class="acc-row"><span>Total Amount Spent:</span><span>${formatUGX(totalSpent)}/=</span></div>
     ${totalBroughtBack > 0 ? `
       <div class="acc-row"><span>Less: Balances Brought Back:</span><span>(${formatUGX(totalBroughtBack)})/=</span></div>

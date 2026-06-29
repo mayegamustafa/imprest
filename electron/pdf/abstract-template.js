@@ -28,7 +28,7 @@ function buildAbstractHTML(data, school) {
   const schoolName = school?.name || 'ORGANIZATION'
   const location = school?.location || ''
 
-  const totalAvailable = cycle.opening_balance + cycle.amount_received
+  const totalAvailable = cycle.opening_balance + cycle.amount_received + (cycle.total_additional_received || 0)
   // Abstract shows NET spent (= sum of category splits), per user spec —
   // balance brought back must NOT be included in "amount spent" here.
   const grandTotal = Object.values(categoryTotals).reduce((s, v) => s + v, 0)
@@ -118,7 +118,7 @@ function buildAbstractHTML(data, school) {
     <h1>${esc(schoolName)}${location ? ' - ' + esc(location) : ''}</h1>
     <h2>IMPREST ACCOUNTABILITY ABSTRACT FOR ${termLabel} — CYCLE ${cycle.cycle_number}</h2>
     <div class="summary">
-      AMOUNT RECEIVED:&nbsp;${formatUGX(cycle.amount_received)}&nbsp;&nbsp;
+      AMOUNT RECEIVED:&nbsp;${formatUGX(cycle.amount_received + (cycle.total_additional_received || 0))}&nbsp;&nbsp;
       BALANCE B/F:&nbsp;${formatUGX(cycle.opening_balance)}&nbsp;&nbsp;
       AMOUNT SPENT:&nbsp;${formatUGX(totalSpent)}&nbsp;&nbsp;
       BALANCE:&nbsp;${formatUGX(closingBalance)}

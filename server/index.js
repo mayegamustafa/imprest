@@ -172,6 +172,10 @@ const METHOD_MAP = {
   closeCycle: 'cycles:close',
   reopenCycle: 'cycles:reopen',
   deleteCycle: 'cycles:delete',
+  getCycleReceipts: 'receipts:getByCycle',
+  createCycleReceipt: 'receipts:create',
+  updateCycleReceipt: 'receipts:update',
+  deleteCycleReceipt: 'receipts:delete',
 
   // Entries
   getEntries: 'entries:getByCycle',

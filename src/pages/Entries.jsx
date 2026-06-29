@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, Lock, FolderPlus, Layers, RotateCcw, Upload } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight, Lock, FolderPlus, Layers, RotateCcw, Upload, Wallet } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
@@ -43,6 +43,18 @@ export default function Entries() {
 
   // ── Reconcile mode ───────────────────────────────────────────────────────
   const [reconcileMode, setReconcileMode]     = useState(false)
+
+  // ── Mid-cycle receipts (top-ups) ──────────────────────────────────────────
+  const [receipts, setReceipts]               = useState([])
+  const [showReceiveModal, setShowReceiveModal] = useState(false)
+  const [editReceipt, setEditReceipt]         = useState(null)
+  const [savingReceipt, setSavingReceipt]     = useState(false)
+  const [confirmDeleteReceipt, setConfirmDeleteReceipt] = useState(null)
+  const [receiptForm, setReceiptForm]         = useState({
+    date: formatDateInput(new Date().toISOString()),
+    amount: '',
+    source: '',
+  })
 
   const [form, setForm] = useState({
     date: formatDateInput(new Date().toISOString()),
@@ -123,8 +135,12 @@ export default function Entries() {
     if (!activeCycleId) return
     setLoading(true)
     try {
-      const data = await window.electronAPI.getEntries(activeCycleId)
+      const [data, rcpts] = await Promise.all([
+        window.electronAPI.getEntries(activeCycleId),
+        window.electronAPI.getCycleReceipts(activeCycleId),
+      ])
       setEntries(data)
+      setReceipts(rcpts)
     } catch (err) {
       notify(err.message, 'error')
     } finally {
@@ -138,26 +154,49 @@ export default function Entries() {
     setSelectedIds(new Set())
   }, [loadEntries])
 
-  // Compute running balances
-  const totalAvailable = activeCycle
+  // Compute running balances. Mid-cycle receipts are interleaved chronologically
+  // as credit lines that lift the balance from their date onward (cashbook style).
+  const additionalReceived = receipts.reduce((s, r) => s + Number(r.amount || 0), 0)
+  const initialAvailable = activeCycle
     ? activeCycle.opening_balance + activeCycle.amount_received
     : 0
+  const totalAvailable = initialAvailable + additionalReceived
 
-  let runningBalance = totalAvailable
-  const entriesWithBalance = entries.map((e, i) => {
-    runningBalance -= e.amount
-    return { ...e, seq: i + 1, runningBalance }
+  const merged = [
+    ...entries.map(e => ({ kind: 'entry', ...e })),
+    ...receipts.map(r => ({ kind: 'receipt', ...r })),
+  ].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1
+    // money in before money out on the same day
+    if (a.kind !== b.kind) return a.kind === 'receipt' ? -1 : 1
+    return (a.id || 0) - (b.id || 0)
   })
 
-  const filtered = entriesWithBalance.filter(e => {
-    if (search && !e.payee.toLowerCase().includes(search.toLowerCase()) &&
-                  !e.purpose.toLowerCase().includes(search.toLowerCase())) return false
-    if (categoryFilter && !(e.splits || []).some(s => s.category_id === categoryFilter)) return false
+  let runningBalance = initialAvailable
+  const ledgerRows = merged.map(row => {
+    if (row.kind === 'receipt') {
+      runningBalance += Number(row.amount || 0)
+    } else {
+      runningBalance -= row.amount
+    }
+    return { ...row, runningBalance }
+  })
+
+  const filtered = ledgerRows.filter(row => {
+    if (row.kind === 'receipt') {
+      if (categoryFilter) return false
+      if (search && !(row.source || '').toLowerCase().includes(search.toLowerCase())) return false
+      return true
+    }
+    if (search && !row.payee.toLowerCase().includes(search.toLowerCase()) &&
+                  !row.purpose.toLowerCase().includes(search.toLowerCase())) return false
+    if (categoryFilter && !(row.splits || []).some(s => s.category_id === categoryFilter)) return false
     return true
   })
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const pagedEntries = paged.filter(r => r.kind === 'entry')
   const totalSpent = entries.reduce((s, e) => s + e.amount, 0)
   const totalBroughtBack = entries.reduce((s, e) => s + Number(e.balance_back || 0), 0)
   // When a category filter is active, compute spending just for that category
@@ -335,6 +374,68 @@ export default function Entries() {
     }
   }
 
+  function openReceiveMoney() {
+    setEditReceipt(null)
+    setReceiptForm({
+      date: formatDateInput(new Date().toISOString()),
+      amount: '',
+      source: '',
+    })
+    setShowReceiveModal(true)
+  }
+
+  function openEditReceipt(receipt) {
+    setEditReceipt(receipt)
+    setReceiptForm({
+      date: formatDateInput(receipt.date),
+      amount: String(receipt.amount),
+      source: receipt.source || '',
+    })
+    setShowReceiveModal(true)
+  }
+
+  async function handleSaveReceipt() {
+    const amount = Number(receiptForm.amount || 0)
+    if (!receiptForm.date) { notify('Date is required', 'error'); return }
+    if (!(amount > 0)) { notify('Enter an amount greater than zero', 'error'); return }
+    setSavingReceipt(true)
+    try {
+      const payload = {
+        cycle_id: activeCycleId,
+        date: receiptForm.date,
+        amount,
+        source: receiptForm.source.trim(),
+      }
+      if (editReceipt) {
+        await window.electronAPI.updateCycleReceipt(editReceipt.id, payload)
+        notify('Receipt updated')
+      } else {
+        await window.electronAPI.createCycleReceipt(payload)
+        notify('Money received recorded')
+      }
+      setShowReceiveModal(false)
+      loadEntries()
+      refreshTerms()
+    } catch (err) {
+      notify(err.message, 'error')
+    } finally {
+      setSavingReceipt(false)
+    }
+  }
+
+  async function confirmReceiptDelete() {
+    const receipt = confirmDeleteReceipt
+    setConfirmDeleteReceipt(null)
+    try {
+      await window.electronAPI.deleteCycleReceipt(receipt.id)
+      notify('Receipt deleted')
+      loadEntries()
+      refreshTerms()
+    } catch (err) {
+      notify(err.message, 'error')
+    }
+  }
+
   async function handleReconcileToggle(entry) {
     const newVal = entry.reconciled ? 0 : 1
     // Optimistic update
@@ -468,6 +569,10 @@ export default function Entries() {
               Delete selected ({selectedIds.size})
             </Button>
           )}
+          <Button variant="secondary" onClick={openReceiveMoney} disabled={isCycleClosed}>
+            <Wallet size={14} />
+            Receive Money
+          </Button>
           <Button onClick={openCreate} disabled={isCycleClosed}>
             <Plus size={14} />
             Add Entry
@@ -535,12 +640,12 @@ export default function Entries() {
                     <input
                       type="checkbox"
                       className="cursor-pointer"
-                      checked={paged.length > 0 && paged.every(e => selectedIds.has(e.id))}
+                      checked={pagedEntries.length > 0 && pagedEntries.every(e => selectedIds.has(e.id))}
                       onChange={e => {
                         if (e.target.checked) {
-                          setSelectedIds(prev => { const s = new Set(prev); paged.forEach(r => s.add(r.id)); return s })
+                          setSelectedIds(prev => { const s = new Set(prev); pagedEntries.forEach(r => s.add(r.id)); return s })
                         } else {
-                          setSelectedIds(prev => { const s = new Set(prev); paged.forEach(r => s.delete(r.id)); return s })
+                          setSelectedIds(prev => { const s = new Set(prev); pagedEntries.forEach(r => s.delete(r.id)); return s })
                         }
                       }}
                     />
@@ -580,7 +685,7 @@ export default function Entries() {
                 <td className="text-center text-ink-muted">—</td>
                 <td className="text-ink-secondary text-xs font-medium">TOTAL</td>
                 <td colSpan={2}></td>
-                <td className="money font-bold">{formatUGX(totalAvailable)}</td>
+                <td className="money font-bold">{formatUGX(initialAvailable)}</td>
                 <td></td>
                 <td></td>
               </tr>
@@ -589,44 +694,16 @@ export default function Entries() {
                 <tr><td colSpan={isCycleClosed && !reconcileMode ? 7 : 8} className="text-center py-8 text-ink-muted">Loading...</td></tr>
               ) : paged.length === 0 ? (
                 <tr><td colSpan={isCycleClosed && !reconcileMode ? 7 : 8} className="text-center py-8 text-ink-muted">No entries found.</td></tr>
-              ) : paged.map(entry => (
-                <tr key={entry.id} className={
-                  reconcileMode
-                    ? entry.reconciled ? 'bg-success-light/40' : 'bg-red-50'
-                    : selectedIds.has(entry.id) ? 'bg-accent-light/20' : ''
-                }>
-                  {reconcileMode ? (
-                    <td className="text-center">
-                      <input
-                        type="checkbox"
-                        className="cursor-pointer accent-green-600 w-4 h-4"
-                        checked={!!entry.reconciled}
-                        onChange={() => handleReconcileToggle(entry)}
-                      />
-                    </td>
-                  ) : !isCycleClosed ? (
-                    <td className="text-center">
-                      <input
-                        type="checkbox"
-                        className="cursor-pointer"
-                        checked={selectedIds.has(entry.id)}
-                        onChange={e => {
-                          setSelectedIds(prev => {
-                            const s = new Set(prev)
-                            e.target.checked ? s.add(entry.id) : s.delete(entry.id)
-                            return s
-                          })
-                        }}
-                      />
-                    </td>
-                  ) : null}
-                  <td className="text-center text-ink-secondary text-xs">{entry.voucher_number}</td>
-                  <td className="text-xs text-ink-secondary">{formatDate(entry.date)}</td>
-                  <td className="font-medium">{entry.payee}</td>
-                  <td className="text-ink-secondary text-sm">{entry.purpose}</td>
-                  <td className="money text-ink">{formatUGX(entry.amount)}</td>
-                  <td className={`money font-medium ${entry.runningBalance < 0 ? 'text-danger' : 'text-ink'}`}>
-                    {formatUGX(entry.runningBalance)}
+              ) : paged.map(row => row.kind === 'receipt' ? (
+                <tr key={`r-${row.id}`} className="bg-success-light/30">
+                  {(reconcileMode || !isCycleClosed) && <td></td>}
+                  <td className="text-center text-success font-bold">+</td>
+                  <td className="text-xs text-ink-secondary">{formatDate(row.date)}</td>
+                  <td className="font-medium text-success">Money received</td>
+                  <td className="text-ink-secondary text-sm italic">{row.source || 'Additional funds received'}</td>
+                  <td className="money font-semibold text-success">+{formatUGX(row.amount)}</td>
+                  <td className={`money font-medium ${row.runningBalance < 0 ? 'text-danger' : 'text-ink'}`}>
+                    {formatUGX(row.runningBalance)}
                   </td>
                   <td>
                     <div className="flex items-center justify-center gap-1">
@@ -634,10 +711,66 @@ export default function Entries() {
                         <Lock size={11} className="text-ink-muted" />
                       ) : (
                         <>
-                          <button onClick={() => openEdit(entry)} className="p-1 hover:bg-gray-100 rounded text-ink-secondary hover:text-ink">
+                          <button onClick={() => openEditReceipt(row)} className="p-1 hover:bg-gray-100 rounded text-ink-secondary hover:text-ink">
                             <Pencil size={13} />
                           </button>
-                          <button onClick={() => handleDelete(entry)} className="p-1 hover:bg-gray-100 rounded text-ink-secondary hover:text-danger">
+                          <button onClick={() => setConfirmDeleteReceipt(row)} className="p-1 hover:bg-gray-100 rounded text-ink-secondary hover:text-danger">
+                            <Trash2 size={13} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={`e-${row.id}`} className={
+                  reconcileMode
+                    ? row.reconciled ? 'bg-success-light/40' : 'bg-red-50'
+                    : selectedIds.has(row.id) ? 'bg-accent-light/20' : ''
+                }>
+                  {reconcileMode ? (
+                    <td className="text-center">
+                      <input
+                        type="checkbox"
+                        className="cursor-pointer accent-green-600 w-4 h-4"
+                        checked={!!row.reconciled}
+                        onChange={() => handleReconcileToggle(row)}
+                      />
+                    </td>
+                  ) : !isCycleClosed ? (
+                    <td className="text-center">
+                      <input
+                        type="checkbox"
+                        className="cursor-pointer"
+                        checked={selectedIds.has(row.id)}
+                        onChange={e => {
+                          setSelectedIds(prev => {
+                            const s = new Set(prev)
+                            e.target.checked ? s.add(row.id) : s.delete(row.id)
+                            return s
+                          })
+                        }}
+                      />
+                    </td>
+                  ) : null}
+                  <td className="text-center text-ink-secondary text-xs">{row.voucher_number}</td>
+                  <td className="text-xs text-ink-secondary">{formatDate(row.date)}</td>
+                  <td className="font-medium">{row.payee}</td>
+                  <td className="text-ink-secondary text-sm">{row.purpose}</td>
+                  <td className="money text-ink">{formatUGX(row.amount)}</td>
+                  <td className={`money font-medium ${row.runningBalance < 0 ? 'text-danger' : 'text-ink'}`}>
+                    {formatUGX(row.runningBalance)}
+                  </td>
+                  <td>
+                    <div className="flex items-center justify-center gap-1">
+                      {isCycleClosed ? (
+                        <Lock size={11} className="text-ink-muted" />
+                      ) : (
+                        <>
+                          <button onClick={() => openEdit(row)} className="p-1 hover:bg-gray-100 rounded text-ink-secondary hover:text-ink">
+                            <Pencil size={13} />
+                          </button>
+                          <button onClick={() => handleDelete(row)} className="p-1 hover:bg-gray-100 rounded text-ink-secondary hover:text-danger">
                             <Trash2 size={13} />
                           </button>
                         </>
@@ -1084,6 +1217,70 @@ export default function Entries() {
             This cannot be undone.
           </p>
         ) : null}
+      </Modal>
+
+      {/* Receive Money Modal */}
+      <Modal
+        open={showReceiveModal}
+        onClose={() => setShowReceiveModal(false)}
+        title={editReceipt ? 'Edit Money Received' : 'Receive Money'}
+        size="md"
+        footer={<>
+          <Button variant="secondary" onClick={() => setShowReceiveModal(false)}>Cancel</Button>
+          <Button onClick={handleSaveReceipt} loading={savingReceipt}>
+            {editReceipt ? 'Save Changes' : 'Record Receipt'}
+          </Button>
+        </>}
+      >
+        <p className="text-sm text-ink-secondary mb-4">
+          Record money received in the middle of this cycle (e.g. an extra drawdown).
+          It appears as a credit on its date and lifts the running balance from there.
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Date"
+            type="date"
+            value={receiptForm.date}
+            onChange={e => setReceiptForm(f => ({ ...f, date: e.target.value }))}
+            required
+          />
+          <Input
+            label="Amount (UGX)"
+            type="number"
+            placeholder="0"
+            value={receiptForm.amount}
+            onChange={e => setReceiptForm(f => ({ ...f, amount: e.target.value }))}
+            min="0"
+            required
+          />
+          <Input
+            label="Source / Note (optional)"
+            placeholder="e.g. Head office top-up"
+            value={receiptForm.source}
+            onChange={e => setReceiptForm(f => ({ ...f, source: e.target.value }))}
+            className="col-span-2"
+          />
+        </div>
+      </Modal>
+
+      {/* Delete Receipt Confirmation Modal */}
+      <Modal
+        open={!!confirmDeleteReceipt}
+        onClose={() => setConfirmDeleteReceipt(null)}
+        title="Delete Receipt"
+        size="sm"
+        footer={<>
+          <Button variant="secondary" onClick={() => setConfirmDeleteReceipt(null)}>Cancel</Button>
+          <Button variant="danger" onClick={confirmReceiptDelete}>Delete receipt</Button>
+        </>}
+      >
+        {confirmDeleteReceipt && (
+          <p className="text-sm text-ink">
+            Delete the receipt of <strong>{formatUGX(confirmDeleteReceipt.amount)}</strong>
+            {confirmDeleteReceipt.source ? <> ({confirmDeleteReceipt.source})</> : null}
+            {' '}on <strong>{formatDate(confirmDeleteReceipt.date)}</strong>? This cannot be undone.
+          </p>
+        )}
       </Modal>
     </div>
   )

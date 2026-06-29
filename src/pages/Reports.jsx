@@ -324,18 +324,32 @@ async function getSchoolOnce() {
 async function buildLedgerPreviewHTML(data, opts = {}) {
   const school = await getSchoolOnce()
   const includeBalance = opts.includeBalance !== false
-  const { cycle, entries, signatories } = data
+  const { cycle, entries, receipts = [], signatories } = data
   const schoolName = upper(school?.name || 'ORGANIZATION')
   const location = upper(school?.location || '')
-  const totalAvailable = cycle.opening_balance + cycle.amount_received
+  const additionalReceived = receipts.reduce((s, r) => s + Number(r.amount || 0), 0)
+  const initialAvailable = cycle.opening_balance + cycle.amount_received
+  const totalAvailable = initialAvailable + additionalReceived
   const totalSpent = entries.reduce((s, e) => s + e.amount, 0)
   const totalBroughtBack = entries.reduce((s, e) => s + Number(e.balance_back || 0), 0)
   const netSpent = totalSpent - totalBroughtBack
   const closing = totalAvailable - netSpent
   const broughtBackEntries = entries.filter(e => Number(e.balance_back || 0) > 0)
 
-  let runBal = totalAvailable
-  const rows = entries.map((e, i) => { runBal -= e.amount; return { ...e, seq: i + 1, runBal } })
+  const merged = [
+    ...entries.map(e => ({ kind: 'entry', ...e })),
+    ...receipts.map(r => ({ kind: 'receipt', ...r })),
+  ].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1
+    if (a.kind !== b.kind) return a.kind === 'receipt' ? -1 : 1
+    return (a.id || 0) - (b.id || 0)
+  })
+  let runBal = initialAvailable
+  let seq = 0
+  const rows = merged.map(item => {
+    if (item.kind === 'receipt') { runBal += Number(item.amount || 0); return { ...item, runBal } }
+    runBal -= item.amount; seq += 1; return { ...item, seq, runBal }
+  })
 
   const sigs = (signatories || []).map(s =>
     `<div style="flex:1;text-align:center;min-width:0">
@@ -345,7 +359,15 @@ async function buildLedgerPreviewHTML(data, opts = {}) {
     </div>`
   ).join('')
 
-  const entryRows = rows.map(e =>
+  const entryRows = rows.map(e => e.kind === 'receipt' ?
+    `<tr style="background:#edf7ed">
+      <td style="text-align:center;border:1px solid #000;padding:2px 4px;font-weight:bold">+</td>
+      <td style="text-align:center;border:1px solid #000;padding:2px 4px">${fmtDate(e.date)}</td>
+      <td style="border:1px solid #000;padding:2px 4px">MONEY RECEIVED</td>
+      <td style="border:1px solid #000;padding:2px 4px;font-style:italic">${escapeHtml(upper(e.source || 'ADDITIONAL FUNDS RECEIVED'))}</td>
+      <td style="text-align:right;border:1px solid #000;padding:2px 6px;font-family:monospace;color:#1F4F8B">+${fmt(e.amount)}</td>
+      ${includeBalance ? `<td style="text-align:right;border:1px solid #000;padding:2px 6px;font-family:monospace">${fmt(e.runBal)}</td>` : ''}
+    </tr>` :
     `<tr>
       <td style="text-align:center;border:1px solid #000;padding:2px 4px">${e.seq}</td>
       <td style="text-align:center;border:1px solid #000;padding:2px 4px">${fmtDate(e.date)}</td>
@@ -358,7 +380,7 @@ async function buildLedgerPreviewHTML(data, opts = {}) {
 
   const bbRows = broughtBackEntries.map(e =>
     `<tr style="background:#f0f4f8">
-      <td style="text-align:center;border:1px solid #000;padding:2px 4px">${rows.find(r => r.id === e.id)?.seq ?? ''}</td>
+      <td style="text-align:center;border:1px solid #000;padding:2px 4px">${rows.find(r => r.kind === 'entry' && r.id === e.id)?.seq ?? ''}</td>
       <td style="text-align:center;border:1px solid #000;padding:2px 4px">${fmtDate(e.date)}</td>
       <td style="border:1px solid #000;padding:2px 4px">${escapeHtml(upper(e.payee))}</td>
       <td style="border:1px solid #000;padding:2px 4px;font-style:italic;color:#555">UNSPENT — RETURNED</td>
@@ -385,7 +407,7 @@ async function buildLedgerPreviewHTML(data, opts = {}) {
   </style></head><body>
     <h1>${escapeHtml(schoolName)}${location ? ' — ' + escapeHtml(location) : ''}</h1>
     <h2>${cycle.cycle_number > 0 ? ['1ST','2ND','3RD','4TH','5TH','6TH'][cycle.cycle_number-1] || cycle.cycle_number+'TH' : ''} IMPREST ACCOUNTABILITY FOR ${periodLabelPreview(cycle)}</h2>
-    <div class="summary">BFWD: ${fmt(cycle.opening_balance)}&nbsp;&nbsp; RECEIVED: ${fmt(cycle.amount_received)}&nbsp;&nbsp; AMOUNT SPENT: ${fmt(totalSpent)}/=${totalBroughtBack > 0 ? `&nbsp;&nbsp; BROUGHT BACK: ${fmt(totalBroughtBack)}/=` : ''}&nbsp;&nbsp; BAL: ${fmt(closing)}/=</div>
+    <div class="summary">BFWD: ${fmt(cycle.opening_balance)}&nbsp;&nbsp; RECEIVED: ${fmt(cycle.amount_received)}${additionalReceived > 0 ? `&nbsp;&nbsp; ADDITIONAL RECEIVED: ${fmt(additionalReceived)}` : ''}&nbsp;&nbsp; AMOUNT SPENT: ${fmt(totalSpent)}/=${totalBroughtBack > 0 ? `&nbsp;&nbsp; BROUGHT BACK: ${fmt(totalBroughtBack)}/=` : ''}&nbsp;&nbsp; BAL: ${fmt(closing)}/=</div>
     <table>
       <thead><tr>
         <th style="width:30px">NO</th>
@@ -398,7 +420,7 @@ async function buildLedgerPreviewHTML(data, opts = {}) {
       <tbody>
         <tr class="open-row"><td></td><td style="text-align:center">BAL B/FWD</td><td></td><td></td><td style="text-align:right;font-family:monospace">${fmt(cycle.opening_balance)}</td>${includeBalance ? '<td></td>' : ''}</tr>
         <tr class="open-row"><td></td><td style="text-align:center">RECEIVED</td><td></td><td></td><td style="text-align:right;font-family:monospace">${fmt(cycle.amount_received)}</td>${includeBalance ? '<td></td>' : ''}</tr>
-        <tr class="open-row"><td></td><td style="text-align:center">TOTAL</td><td></td><td></td><td style="text-align:right;font-family:monospace;font-weight:bold">${fmt(totalAvailable)}</td>${includeBalance ? '<td></td>' : ''}</tr>
+        <tr class="open-row"><td></td><td style="text-align:center">TOTAL</td><td></td><td></td><td style="text-align:right;font-family:monospace;font-weight:bold">${fmt(initialAvailable)}</td>${includeBalance ? '<td></td>' : ''}</tr>
         ${entryRows}
         <tr class="total-row"><td colspan="4" style="text-align:right;padding-right:8px">TOTAL AMOUNT SPENT</td><td style="text-align:right;font-family:monospace">${fmt(totalSpent)}</td>${includeBalance ? `<td style="text-align:right;font-family:monospace">${fmt(totalAvailable - totalSpent)}</td>` : ''}</tr>
         ${broughtBackEntries.length > 0 ? `
@@ -411,7 +433,10 @@ async function buildLedgerPreviewHTML(data, opts = {}) {
     </table>
     <div class="acc">
       <h3>Accountability</h3>
-      <div class="acc-r"><span>Total Received:</span><span style="font-family:monospace;font-weight:bold">${fmt(totalAvailable)}/=</span></div>
+      <div class="acc-r"><span>Balance B/Fwd:</span><span style="font-family:monospace;font-weight:bold">${fmt(cycle.opening_balance)}/=</span></div>
+      <div class="acc-r"><span>Amount Received:</span><span style="font-family:monospace;font-weight:bold">${fmt(cycle.amount_received)}/=</span></div>
+      ${additionalReceived > 0 ? `<div class="acc-r"><span>Additional Received (mid-cycle):</span><span style="font-family:monospace;font-weight:bold">${fmt(additionalReceived)}/=</span></div>` : ''}
+      <div class="acc-r" style="border-top:1px solid #999;padding-top:3px;margin-top:3px"><span>Total Available:</span><span style="font-family:monospace;font-weight:bold">${fmt(totalAvailable)}/=</span></div>
       <div class="acc-r"><span>Total Amount Spent:</span><span style="font-family:monospace;font-weight:bold">${fmt(totalSpent)}/=</span></div>
       ${totalBroughtBack > 0 ? `
         <div class="acc-r"><span>Less: Balances Brought Back:</span><span style="font-family:monospace;font-weight:bold">(${fmt(totalBroughtBack)})/=</span></div>
@@ -428,7 +453,7 @@ async function buildAbstractPreviewHTML(data) {
   const { cycle, categories, rows, categoryTotals } = data
   const schoolName = upper(school?.name || 'ORGANIZATION')
   const location = upper(school?.location || '')
-  const totalAvailable = cycle.opening_balance + cycle.amount_received
+  const totalAvailable = cycle.opening_balance + cycle.amount_received + (cycle.total_additional_received || 0)
   const grandTotal = Object.values(categoryTotals).reduce((s, v) => s + v, 0)
   const closing = totalAvailable - grandTotal
 
@@ -460,7 +485,7 @@ async function buildAbstractPreviewHTML(data) {
   </style></head><body>
     <h1>${escapeHtml(schoolName)}${location ? ' — ' + escapeHtml(location) : ''}</h1>
     <h2>IMPREST ACCOUNTABILITY ABSTRACT FOR ${periodLabelPreview(cycle)} — CYCLE ${cycle.cycle_number}</h2>
-    <div class="sum">AMOUNT RECEIVED: ${fmt(cycle.amount_received)}&nbsp;&nbsp; BALANCE B/F: ${fmt(cycle.opening_balance)}&nbsp;&nbsp; AMOUNT SPENT: ${fmt(grandTotal)}&nbsp;&nbsp; BALANCE: ${fmt(closing)}</div>
+    <div class="sum">AMOUNT RECEIVED: ${fmt(cycle.amount_received + (cycle.total_additional_received || 0))}&nbsp;&nbsp; BALANCE B/F: ${fmt(cycle.opening_balance)}&nbsp;&nbsp; AMOUNT SPENT: ${fmt(grandTotal)}&nbsp;&nbsp; BALANCE: ${fmt(closing)}</div>
     <table>
       <thead><tr>
         <th style="border:1px solid #000;padding:2px 3px;font-size:7.5pt;background:#e8e8e8;width:24px">VR<br>NO.</th>

@@ -25,7 +25,7 @@ function periodLabel(cycle) {
 
 // ─── Ledger workbook ────────────────────────────────────────────────────────
 async function buildLedgerWorkbook(data, school, options = {}) {
-  const { cycle, entries, signatories } = data
+  const { cycle, entries, receipts = [], signatories } = data
   const orgName = (school?.name || 'Organization') + (school?.location ? ' - ' + school.location : '')
   const includeBalance = options.includeBalance !== false
   // Total columns count and the merge end-letter for full-width rows
@@ -71,16 +71,28 @@ async function buildLedgerWorkbook(data, school, options = {}) {
   ws.getRow(row).height = 20
   row++
 
-  const totalAvailable = cycle.opening_balance + cycle.amount_received
+  const additionalReceived = receipts.reduce((s, r) => s + Number(r.amount || 0), 0)
+  const initialAvailable = cycle.opening_balance + cycle.amount_received
+  const totalAvailable = initialAvailable + additionalReceived
   const totalSpent = entries.reduce((s, e) => s + e.amount, 0)
   const totalBroughtBack = entries.reduce((s, e) => s + Number(e.balance_back || 0), 0)
   const netSpent = totalSpent - totalBroughtBack
   const closing = totalAvailable - netSpent
   const broughtBackEntries = entries.filter(e => Number(e.balance_back || 0) > 0)
 
+  // Interleave mid-cycle receipts with vouchers (date order) for the running balance
+  const merged = [
+    ...entries.map(e => ({ kind: 'entry', ...e })),
+    ...receipts.map(r => ({ kind: 'receipt', ...r })),
+  ].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1
+    if (a.kind !== b.kind) return a.kind === 'receipt' ? -1 : 1
+    return (a.id || 0) - (b.id || 0)
+  })
+
   ws.mergeCells(`A${row}:${lastColLetter}${row}`)
   const summary = ws.getCell(`A${row}`)
-  summary.value = `BFWD: ${fmt(cycle.opening_balance)}    AMOUNT RECEIVED: ${fmt(cycle.amount_received)}    AMOUNT SPENT: ${fmt(totalSpent)}/=${totalBroughtBack > 0 ? `    BROUGHT BACK: ${fmt(totalBroughtBack)}/=` : ''}    BAL: ${fmt(closing)}/=`
+  summary.value = `BFWD: ${fmt(cycle.opening_balance)}    AMOUNT RECEIVED: ${fmt(cycle.amount_received)}${additionalReceived > 0 ? `    ADDITIONAL RECEIVED: ${fmt(additionalReceived)}` : ''}    AMOUNT SPENT: ${fmt(totalSpent)}/=${totalBroughtBack > 0 ? `    BROUGHT BACK: ${fmt(totalBroughtBack)}/=` : ''}    BAL: ${fmt(closing)}/=`
   summary.font = { size: 10 }
   summary.alignment = { horizontal: 'center' }
   row += 2
@@ -104,7 +116,7 @@ async function buildLedgerWorkbook(data, school, options = {}) {
   const openingTpl = [
     ['', 'BAL B/FWD', '', '', cycle.opening_balance],
     ['', 'RECEIVED', '', '', cycle.amount_received],
-    ['', 'TOTAL', '', '', totalAvailable],
+    ['', 'TOTAL', '', '', initialAvailable],
   ]
   openingTpl.forEach((data, idx) => {
     const r = ws.getRow(row)
@@ -121,16 +133,37 @@ async function buildLedgerWorkbook(data, school, options = {}) {
     row++
   })
 
-  // Entry rows
-  let runBal = totalAvailable
-  entries.forEach((e, idx) => {
-    runBal -= e.amount
+  // Entry + receipt rows (interleaved by date)
+  let runBal = initialAvailable
+  let seq = 0
+  merged.forEach(item => {
     const r = ws.getRow(row)
-    r.getCell(1).value = idx + 1
-    r.getCell(2).value = formatDate(e.date)
-    r.getCell(3).value = upper(e.payee)
-    r.getCell(4).value = upper(e.purpose)
-    r.getCell(5).value = e.amount
+    if (item.kind === 'receipt') {
+      runBal += Number(item.amount || 0)
+      r.getCell(1).value = '+'
+      r.getCell(2).value = formatDate(item.date)
+      r.getCell(3).value = 'MONEY RECEIVED'
+      r.getCell(4).value = upper(item.source || 'ADDITIONAL FUNDS RECEIVED')
+      r.getCell(5).value = item.amount
+      if (includeBalance) r.getCell(6).value = runBal
+      for (let i = 1; i <= lastCol; i++) {
+        const c = r.getCell(i)
+        c.border = thinBorderAll()
+        c.font = { size: 10, italic: i === 4, color: i === 5 ? { argb: 'FF1F4F8B' } : undefined }
+        if (i === 1 || i === 2) c.alignment = { horizontal: 'center' }
+        if (i === 5 || i === 6) c.numFmt = '#,##0'
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDF7ED' } }
+      }
+      row++
+      return
+    }
+    runBal -= item.amount
+    seq += 1
+    r.getCell(1).value = seq
+    r.getCell(2).value = formatDate(item.date)
+    r.getCell(3).value = upper(item.payee)
+    r.getCell(4).value = upper(item.purpose)
+    r.getCell(5).value = item.amount
     if (includeBalance) r.getCell(6).value = runBal
     for (let i = 1; i <= lastCol; i++) {
       const c = r.getCell(i)
@@ -238,7 +271,10 @@ async function buildLedgerWorkbook(data, school, options = {}) {
   row++
 
   const accLines = [
-    ['Total Received:', totalAvailable],
+    ['Balance B/Fwd:', cycle.opening_balance],
+    ['Amount Received:', cycle.amount_received],
+    ...(additionalReceived > 0 ? [['Additional Received (mid-cycle):', additionalReceived]] : []),
+    ['Total Available:', totalAvailable],
     ['Total Amount Spent:', totalSpent],
     ...(totalBroughtBack > 0 ? [
       ['Less: Balances Brought Back:', -totalBroughtBack],
@@ -323,12 +359,12 @@ async function buildAbstractWorkbook(data, school) {
   sub.alignment = { horizontal: 'center' }
   row++
 
-  const totalAvailable = cycle.opening_balance + cycle.amount_received
+  const totalAvailable = cycle.opening_balance + cycle.amount_received + (cycle.total_additional_received || 0)
   const grandTotal = Object.values(categoryTotals).reduce((s, v) => s + v, 0)
   const closing = totalAvailable - grandTotal
 
   ws.mergeCells(`A${row}:${lastColLetter}${row}`)
-  ws.getCell(`A${row}`).value = `AMOUNT RECEIVED: ${fmt(cycle.amount_received)}    BALANCE B/F: ${fmt(cycle.opening_balance)}    AMOUNT SPENT: ${fmt(grandTotal)}    BALANCE: ${fmt(closing)}`
+  ws.getCell(`A${row}`).value = `AMOUNT RECEIVED: ${fmt(cycle.amount_received + (cycle.total_additional_received || 0))}    BALANCE B/F: ${fmt(cycle.opening_balance)}    AMOUNT SPENT: ${fmt(grandTotal)}    BALANCE: ${fmt(closing)}`
   ws.getCell(`A${row}`).font = { size: 9 }
   ws.getCell(`A${row}`).alignment = { horizontal: 'center' }
   row += 2

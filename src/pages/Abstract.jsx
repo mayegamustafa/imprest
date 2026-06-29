@@ -42,7 +42,8 @@ export default function Abstract() {
   // Abstract shows NET spending — balance brought back is NOT included in the
   // "amount spent" totals here. The grand total = sum of category splits = net.
   const grandTotal = Object.values(totals).reduce((s, v) => s + v, 0)
-  const totalAvailable = cycle ? cycle.opening_balance + cycle.amount_received : 0
+  const totalReceived = cycle ? cycle.amount_received + (cycle.total_additional_received || 0) : 0
+  const totalAvailable = cycle ? (cycle.total_available ?? (cycle.opening_balance + totalReceived)) : 0
   const closingBalance = cycle ? totalAvailable - grandTotal : 0
 
   return (
@@ -65,7 +66,7 @@ export default function Abstract() {
         <div className="grid grid-cols-4 gap-3">
           {[
             { label: 'BAL B/FWD', value: formatUGX(cycle.opening_balance) },
-            { label: 'Received', value: formatUGX(cycle.amount_received) },
+            { label: 'Received', value: formatUGX(totalReceived) },
             { label: 'Total Spent', value: formatUGX(grandTotal), color: 'text-warning' },
             { label: 'Balance C/F', value: formatUGX(closingBalance), color: closingBalance < 0 ? 'text-danger' : 'text-success' },
           ].map(({ label, value, color = 'text-ink' }) => (

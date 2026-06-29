@@ -13,7 +13,9 @@ function registerTermsHandlers(ipcMain) {
     return terms.map(term => {
       const cycles = db.prepare(`
         SELECT *,
-          (opening_balance + amount_received) AS total_available,
+          (opening_balance + amount_received
+            + (SELECT COALESCE(SUM(amount),0) FROM cycle_receipts WHERE cycle_id = imprest_cycles.id)) AS total_available,
+          (SELECT COALESCE(SUM(amount),0) FROM cycle_receipts WHERE cycle_id = imprest_cycles.id) AS total_additional_received,
           (SELECT COALESCE(SUM(amount),0) FROM entries WHERE cycle_id = imprest_cycles.id) AS total_spent,
         (SELECT COALESCE(SUM(balance_back),0) FROM entries WHERE cycle_id = imprest_cycles.id) AS total_brought_back
         FROM imprest_cycles
@@ -57,7 +59,9 @@ function registerTermsHandlers(ipcMain) {
     const db = getDatabase()
     return db.prepare(`
       SELECT *,
-        (opening_balance + amount_received) AS total_available,
+        (opening_balance + amount_received
+          + (SELECT COALESCE(SUM(amount),0) FROM cycle_receipts WHERE cycle_id = imprest_cycles.id)) AS total_available,
+        (SELECT COALESCE(SUM(amount),0) FROM cycle_receipts WHERE cycle_id = imprest_cycles.id) AS total_additional_received,
         (SELECT COALESCE(SUM(amount),0) FROM entries WHERE cycle_id = imprest_cycles.id) AS total_spent,
         (SELECT COALESCE(SUM(balance_back),0) FROM entries WHERE cycle_id = imprest_cycles.id) AS total_brought_back
       FROM imprest_cycles
@@ -108,7 +112,8 @@ function registerTermsHandlers(ipcMain) {
     const db = getDatabase()
     const cycle = db.prepare(`
       SELECT *,
-        (opening_balance + amount_received) AS total_available,
+        (opening_balance + amount_received
+          + (SELECT COALESCE(SUM(amount),0) FROM cycle_receipts WHERE cycle_id = imprest_cycles.id)) AS total_available,
         (SELECT COALESCE(SUM(amount),0) FROM entries WHERE cycle_id = imprest_cycles.id) AS total_spent,
         (SELECT COALESCE(SUM(balance_back),0) FROM entries WHERE cycle_id = imprest_cycles.id) AS total_brought_back
       FROM imprest_cycles WHERE id=?
@@ -147,6 +152,63 @@ function registerTermsHandlers(ipcMain) {
     }
     db.prepare('DELETE FROM imprest_cycles WHERE id=?').run(id)
     audit(db, 'imprest_cycles', id, 'DELETE', old, null)
+    return { success: true }
+  })
+
+  // ── Cycle receipts (mid-cycle top-ups) ───────────────────────────────────────
+  const assertCycleEditable = (db, cycleId) => {
+    const cycle = db.prepare('SELECT * FROM imprest_cycles WHERE id=?').get(cycleId)
+    if (!cycle) throw new Error('Cycle not found.')
+    if (cycle.status === 'closed') {
+      throw new Error('This cycle is closed. Re-open it before recording money received.')
+    }
+    return cycle
+  }
+
+  ipcMain.handle('receipts:getByCycle', (event, cycleId) => {
+    const db = getDatabase()
+    return db.prepare(
+      'SELECT * FROM cycle_receipts WHERE cycle_id = ? ORDER BY date, id'
+    ).all(cycleId)
+  })
+
+  ipcMain.handle('receipts:create', (event, data) => {
+    requireRole('admin', 'accountant')
+    const db = getDatabase()
+    assertCycleEditable(db, data.cycle_id)
+    const amount = Number(data.amount)
+    if (!(amount > 0)) throw new Error('Amount must be greater than zero.')
+    const result = db.prepare(`
+      INSERT INTO cycle_receipts (cycle_id, date, amount, source)
+      VALUES (?,?,?,?)
+    `).run(data.cycle_id, data.date, amount, data.source?.trim() || null)
+    audit(db, 'cycle_receipts', result.lastInsertRowid, 'INSERT', null, data)
+    return { id: result.lastInsertRowid, success: true }
+  })
+
+  ipcMain.handle('receipts:update', (event, id, data) => {
+    requireRole('admin', 'accountant')
+    const db = getDatabase()
+    const old = db.prepare('SELECT * FROM cycle_receipts WHERE id=?').get(id)
+    if (!old) throw new Error('Receipt not found.')
+    assertCycleEditable(db, old.cycle_id)
+    const amount = Number(data.amount)
+    if (!(amount > 0)) throw new Error('Amount must be greater than zero.')
+    db.prepare(
+      'UPDATE cycle_receipts SET date=?, amount=?, source=? WHERE id=?'
+    ).run(data.date, amount, data.source?.trim() || null, id)
+    audit(db, 'cycle_receipts', id, 'UPDATE', old, data)
+    return { success: true }
+  })
+
+  ipcMain.handle('receipts:delete', (event, id) => {
+    requireRole('admin', 'accountant')
+    const db = getDatabase()
+    const old = db.prepare('SELECT * FROM cycle_receipts WHERE id=?').get(id)
+    if (!old) throw new Error('Receipt not found.')
+    assertCycleEditable(db, old.cycle_id)
+    db.prepare('DELETE FROM cycle_receipts WHERE id=?').run(id)
+    audit(db, 'cycle_receipts', id, 'DELETE', old, null)
     return { success: true }
   })
 }

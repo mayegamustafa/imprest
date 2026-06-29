@@ -26,7 +26,9 @@ function getLedgerData(cycleId) {
   const db = getDatabase()
   const cycle = db.prepare(`
     SELECT ic.*, t.term_number, t.year, t.period_type, t.custom_name,
-      (ic.opening_balance + ic.amount_received) AS total_available,
+      (ic.opening_balance + ic.amount_received
+        + (SELECT COALESCE(SUM(amount),0) FROM cycle_receipts WHERE cycle_id = ic.id)) AS total_available,
+      (SELECT COALESCE(SUM(amount),0) FROM cycle_receipts WHERE cycle_id = ic.id) AS total_additional_received,
       (SELECT COALESCE(SUM(amount),0) FROM entries WHERE cycle_id = ic.id) AS total_spent,
       (SELECT COALESCE(SUM(balance_back),0) FROM entries WHERE cycle_id = ic.id) AS total_brought_back
     FROM imprest_cycles ic
@@ -39,16 +41,19 @@ function getLedgerData(cycleId) {
   cycle.closing_balance = cycle.total_available - cycle.net_spent
 
   const entries = db.prepare(`SELECT * FROM entries WHERE cycle_id=? ORDER BY date, id`).all(cycleId)
+  const receipts = db.prepare(`SELECT * FROM cycle_receipts WHERE cycle_id=? ORDER BY date, id`).all(cycleId)
   const signatories = db.prepare('SELECT * FROM signatories WHERE is_active=1 ORDER BY sort_order').all()
 
-  return { cycle, entries, signatories }
+  return { cycle, entries, receipts, signatories }
 }
 
 function getAbstractData(cycleId) {
   const db = getDatabase()
   const cycle = db.prepare(`
     SELECT ic.*, t.term_number, t.year, t.period_type, t.custom_name,
-      (ic.opening_balance + ic.amount_received) AS total_available,
+      (ic.opening_balance + ic.amount_received
+        + (SELECT COALESCE(SUM(amount),0) FROM cycle_receipts WHERE cycle_id = ic.id)) AS total_available,
+      (SELECT COALESCE(SUM(amount),0) FROM cycle_receipts WHERE cycle_id = ic.id) AS total_additional_received,
       (SELECT COALESCE(SUM(amount),0) FROM entries WHERE cycle_id = ic.id) AS total_spent,
       (SELECT COALESCE(SUM(balance_back),0) FROM entries WHERE cycle_id = ic.id) AS total_brought_back
     FROM imprest_cycles ic

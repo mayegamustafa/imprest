@@ -47,7 +47,7 @@ export default function Header() {
   }
 
   const balance = activeCycle
-    ? activeCycle.opening_balance + activeCycle.amount_received -
+    ? (activeCycle.total_available ?? (activeCycle.opening_balance + activeCycle.amount_received)) -
       ((activeCycle.total_spent || 0) - (activeCycle.total_brought_back || 0))
     : null
 

@@ -245,7 +245,9 @@ export default function Terms() {
                       <tbody>
                         {(term.cycles || []).map(cycle => {
                           const netSpent = (cycle.total_spent || 0) - (cycle.total_brought_back || 0)
-                          const balance = cycle.opening_balance + cycle.amount_received - netSpent
+                          const totalReceived = cycle.amount_received + (cycle.total_additional_received || 0)
+                          const totalAvailable = cycle.total_available ?? (cycle.opening_balance + totalReceived)
+                          const balance = totalAvailable - netSpent
                           const isActive = cycle.id === activeCycleId
                           return (
                             <tr
@@ -262,7 +264,10 @@ export default function Terms() {
                                 </div>
                               </td>
                               <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-ink-secondary">{formatUGX(cycle.opening_balance)}</td>
-                              <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums">{formatUGX(cycle.amount_received)}</td>
+                              <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums" title={cycle.total_additional_received > 0 ? `Initial ${formatUGX(cycle.amount_received)} + ${formatUGX(cycle.total_additional_received)} received mid-cycle` : undefined}>
+                                {formatUGX(totalReceived)}
+                                {cycle.total_additional_received > 0 && <span className="text-2xs text-accent ml-1">+{formatUGX(cycle.total_additional_received)}</span>}
+                              </td>
                               <td className="px-4 py-2.5 text-right text-sm font-mono tabular-nums text-warning">{formatUGX(cycle.total_spent || 0)}</td>
                               <td className={`px-4 py-2.5 text-right text-sm font-mono tabular-nums font-semibold ${balance < 0 ? 'text-danger' : 'text-success'}`}>
                                 {formatUGX(balance)}
