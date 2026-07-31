@@ -104,7 +104,7 @@ function buildLedgerHTML(data, school, options = {}) {
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: 'Courier New', Courier, monospace;
+    font-family: Arial, 'Liberation Sans', Helvetica, sans-serif;
     font-size: 9pt;
     color: #000;
     background: #fff;
@@ -119,7 +119,7 @@ function buildLedgerHTML(data, school, options = {}) {
   th { background: #f0f0f0; font-weight: bold; text-align: center; }
   td.num { text-align: center; width: 28px; }
   td.center { text-align: center; }
-  td.money { text-align: right; width: 90px; font-family: 'Courier New', monospace; }
+  td.money { text-align: right; width: 90px; font-variant-numeric: tabular-nums; }
   tr.opening td { background: #fafafa; font-weight: bold; }
   tr.total-row td { border-top: 2px solid #000; font-weight: bold; }
   tr.total-row td.money { font-weight: bold; }

@@ -63,7 +63,7 @@ function buildAbstractHTML(data, school) {
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: 'Courier New', Courier, monospace;
+    font-family: Arial, 'Liberation Sans', Helvetica, sans-serif;
     font-size: 7.5pt;
     color: #000;
     background: #fff;

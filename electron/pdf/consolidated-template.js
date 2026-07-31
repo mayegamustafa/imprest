@@ -42,7 +42,7 @@ function buildConsolidatedHTML(data, school) {
 <html><head><meta charset="UTF-8"/>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family:'Courier New',monospace; font-size:8pt; color:#000; background:#fff; padding:10mm 8mm; }
+  body { font-family:Arial,'Liberation Sans',Helvetica,sans-serif; font-size:8pt; color:#000; background:#fff; padding:10mm 8mm; }
   .header { text-align:center; margin-bottom:8px; }
   .header h1 { font-size:10pt; font-weight:bold; text-transform:uppercase; }
   .header h2 { font-size:9pt; font-weight:bold; margin-top:2px; }
@@ -51,7 +51,7 @@ function buildConsolidatedHTML(data, school) {
   th, td { border:1px solid #000; padding:2px 4px; font-size:7.5pt; vertical-align:middle; }
   th { background:#e8e8e8; font-weight:bold; text-align:center; word-wrap:break-word; line-height:1.15; }
   .cat-name { font-weight:bold; }
-  td.money { text-align:right; font-family:'Courier New',monospace; }
+  td.money { text-align:right; font-variant-numeric:tabular-nums; }
   .total-col { font-weight:bold; background:#f8f8f8; }
   tr.totals-row td { border-top:2px solid #000; font-weight:bold; background:#efefef; }
   @media print { @page { size:A4 landscape; margin:10mm 8mm; } body { padding:0; } }

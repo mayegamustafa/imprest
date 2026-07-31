@@ -359,16 +359,16 @@ async function buildLedgerPreviewHTML(data, opts = {}) {
       <td style="text-align:center;border:1px solid #000;padding:2px 4px">${fmtDate(e.date)}</td>
       <td style="border:1px solid #000;padding:2px 4px">MONEY RECEIVED</td>
       <td style="border:1px solid #000;padding:2px 4px;font-style:italic">${escapeHtml(upper(e.source || 'ADDITIONAL FUNDS RECEIVED'))}</td>
-      <td style="text-align:right;border:1px solid #000;padding:2px 6px;font-family:monospace;color:#1F4F8B">+${fmt(e.amount)}</td>
-      ${includeBalance ? `<td style="text-align:right;border:1px solid #000;padding:2px 6px;font-family:monospace">${fmt(e.runBal)}</td>` : ''}
+      <td style="text-align:right;border:1px solid #000;padding:2px 6px;font-variant-numeric:tabular-nums;color:#1F4F8B">+${fmt(e.amount)}</td>
+      ${includeBalance ? `<td style="text-align:right;border:1px solid #000;padding:2px 6px;font-variant-numeric:tabular-nums">${fmt(e.runBal)}</td>` : ''}
     </tr>` :
     `<tr>
       <td style="text-align:center;border:1px solid #000;padding:2px 4px">${e.seq}</td>
       <td style="text-align:center;border:1px solid #000;padding:2px 4px">${fmtDate(e.date)}</td>
       <td style="border:1px solid #000;padding:2px 4px">${escapeHtml(upper(e.payee))}</td>
       <td style="border:1px solid #000;padding:2px 4px">${escapeHtml(upper(e.purpose))}</td>
-      <td style="text-align:right;border:1px solid #000;padding:2px 6px;font-family:monospace">${fmt(e.amount)}</td>
-      ${includeBalance ? `<td style="text-align:right;border:1px solid #000;padding:2px 6px;font-family:monospace">${fmt(e.runBal)}</td>` : ''}
+      <td style="text-align:right;border:1px solid #000;padding:2px 6px;font-variant-numeric:tabular-nums">${fmt(e.amount)}</td>
+      ${includeBalance ? `<td style="text-align:right;border:1px solid #000;padding:2px 6px;font-variant-numeric:tabular-nums">${fmt(e.runBal)}</td>` : ''}
     </tr>`
   ).join('')
 
@@ -378,14 +378,14 @@ async function buildLedgerPreviewHTML(data, opts = {}) {
       <td style="text-align:center;border:1px solid #000;padding:2px 4px">${fmtDate(e.date)}</td>
       <td style="border:1px solid #000;padding:2px 4px">${escapeHtml(upper(e.payee))}</td>
       <td style="border:1px solid #000;padding:2px 4px;font-style:italic;color:#555">UNSPENT — RETURNED</td>
-      <td style="text-align:right;border:1px solid #000;padding:2px 6px;font-family:monospace;color:#1F4F8B">+${fmt(e.balance_back)}</td>
+      <td style="text-align:right;border:1px solid #000;padding:2px 6px;font-variant-numeric:tabular-nums;color:#1F4F8B">+${fmt(e.balance_back)}</td>
       ${includeBalance ? '<td style="border:1px solid #000;padding:2px 4px"></td>' : ''}
     </tr>`
   ).join('')
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
   <style>
-    body{font-family:'Courier New',monospace;font-size:10pt;padding:20px;background:#fff;color:#000}
+    body{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-size:10pt;padding:20px;background:#fff;color:#000}
     h1{font-size:12pt;text-align:center;text-transform:uppercase;margin:0}
     h2{font-size:11pt;text-align:center;margin:4px 0}
     .summary{text-align:center;font-size:9pt;margin:4px 0 10px}
@@ -412,31 +412,31 @@ async function buildLedgerPreviewHTML(data, opts = {}) {
         ${includeBalance ? '<th style="width:105px">BALANCE</th>' : ''}
       </tr></thead>
       <tbody>
-        <tr class="open-row"><td></td><td style="text-align:center">BAL B/FWD</td><td></td><td></td><td style="text-align:right;font-family:monospace">${fmt(cycle.opening_balance)}</td>${includeBalance ? '<td></td>' : ''}</tr>
-        <tr class="open-row"><td></td><td style="text-align:center">RECEIVED</td><td></td><td></td><td style="text-align:right;font-family:monospace">${fmt(cycle.amount_received)}</td>${includeBalance ? '<td></td>' : ''}</tr>
-        <tr class="open-row"><td></td><td style="text-align:center">TOTAL</td><td></td><td></td><td style="text-align:right;font-family:monospace;font-weight:bold">${fmt(initialAvailable)}</td>${includeBalance ? '<td></td>' : ''}</tr>
+        <tr class="open-row"><td></td><td style="text-align:center">BAL B/FWD</td><td></td><td></td><td style="text-align:right;font-variant-numeric:tabular-nums">${fmt(cycle.opening_balance)}</td>${includeBalance ? '<td></td>' : ''}</tr>
+        <tr class="open-row"><td></td><td style="text-align:center">RECEIVED</td><td></td><td></td><td style="text-align:right;font-variant-numeric:tabular-nums">${fmt(cycle.amount_received)}</td>${includeBalance ? '<td></td>' : ''}</tr>
+        <tr class="open-row"><td></td><td style="text-align:center">TOTAL</td><td></td><td></td><td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:bold">${fmt(initialAvailable)}</td>${includeBalance ? '<td></td>' : ''}</tr>
         ${entryRows}
-        <tr class="total-row"><td colspan="4" style="text-align:right;padding-right:8px">TOTAL AMOUNT SPENT</td><td style="text-align:right;font-family:monospace">${fmt(totalSpent)}</td>${includeBalance ? `<td style="text-align:right;font-family:monospace">${fmt(totalAvailable - totalSpent)}</td>` : ''}</tr>
+        <tr class="total-row"><td colspan="4" style="text-align:right;padding-right:8px">TOTAL AMOUNT SPENT</td><td style="text-align:right;font-variant-numeric:tabular-nums">${fmt(totalSpent)}</td>${includeBalance ? `<td style="text-align:right;font-variant-numeric:tabular-nums">${fmt(totalAvailable - totalSpent)}</td>` : ''}</tr>
         ${broughtBackEntries.length > 0 ? `
           <tr><td colspan="${includeBalance ? 6 : 5}" style="background:#e8f0f5;padding:4px 8px;font-size:8.5pt;font-weight:bold;text-transform:uppercase;border:1px solid #000">Balances Brought Back</td></tr>
           ${bbRows}
-          <tr class="total-row" style="background:#e8f0f5"><td colspan="4" style="text-align:right;padding-right:8px">TOTAL BROUGHT BACK</td><td style="text-align:right;font-family:monospace;color:#1F4F8B">+${fmt(totalBroughtBack)}</td>${includeBalance ? '<td></td>' : ''}</tr>
-          <tr class="total-row" style="background:#f5f5f5;border-top:2px solid #000"><td colspan="4" style="text-align:right;padding-right:8px">NET SPENT</td><td style="text-align:right;font-family:monospace">${fmt(netSpent)}</td>${includeBalance ? `<td style="text-align:right;font-family:monospace">${fmt(closing)}</td>` : ''}</tr>
+          <tr class="total-row" style="background:#e8f0f5"><td colspan="4" style="text-align:right;padding-right:8px">TOTAL BROUGHT BACK</td><td style="text-align:right;font-variant-numeric:tabular-nums;color:#1F4F8B">+${fmt(totalBroughtBack)}</td>${includeBalance ? '<td></td>' : ''}</tr>
+          <tr class="total-row" style="background:#f5f5f5;border-top:2px solid #000"><td colspan="4" style="text-align:right;padding-right:8px">NET SPENT</td><td style="text-align:right;font-variant-numeric:tabular-nums">${fmt(netSpent)}</td>${includeBalance ? `<td style="text-align:right;font-variant-numeric:tabular-nums">${fmt(closing)}</td>` : ''}</tr>
         ` : ''}
       </tbody>
     </table>
     <div class="acc">
       <h3>Accountability</h3>
-      <div class="acc-r"><span>Balance B/Fwd:</span><span style="font-family:monospace;font-weight:bold">${fmt(cycle.opening_balance)}/=</span></div>
-      <div class="acc-r"><span>Amount Received:</span><span style="font-family:monospace;font-weight:bold">${fmt(cycle.amount_received)}/=</span></div>
-      ${additionalReceived > 0 ? `<div class="acc-r"><span>Additional Received (mid-cycle):</span><span style="font-family:monospace;font-weight:bold">${fmt(additionalReceived)}/=</span></div>` : ''}
-      <div class="acc-r" style="border-top:1px solid #999;padding-top:3px;margin-top:3px"><span>Total Available:</span><span style="font-family:monospace;font-weight:bold">${fmt(totalAvailable)}/=</span></div>
-      <div class="acc-r"><span>Total Amount Spent:</span><span style="font-family:monospace;font-weight:bold">${fmt(totalSpent)}/=</span></div>
+      <div class="acc-r"><span>Balance B/Fwd:</span><span style="font-variant-numeric:tabular-nums;font-weight:bold">${fmt(cycle.opening_balance)}/=</span></div>
+      <div class="acc-r"><span>Amount Received:</span><span style="font-variant-numeric:tabular-nums;font-weight:bold">${fmt(cycle.amount_received)}/=</span></div>
+      ${additionalReceived > 0 ? `<div class="acc-r"><span>Additional Received (mid-cycle):</span><span style="font-variant-numeric:tabular-nums;font-weight:bold">${fmt(additionalReceived)}/=</span></div>` : ''}
+      <div class="acc-r" style="border-top:1px solid #999;padding-top:3px;margin-top:3px"><span>Total Available:</span><span style="font-variant-numeric:tabular-nums;font-weight:bold">${fmt(totalAvailable)}/=</span></div>
+      <div class="acc-r"><span>Total Amount Spent:</span><span style="font-variant-numeric:tabular-nums;font-weight:bold">${fmt(totalSpent)}/=</span></div>
       ${totalBroughtBack > 0 ? `
-        <div class="acc-r"><span>Less: Balances Brought Back:</span><span style="font-family:monospace;font-weight:bold">(${fmt(totalBroughtBack)})/=</span></div>
-        <div class="acc-r" style="border-top:1px solid #999;padding-top:3px;margin-top:3px"><span>Net Spent:</span><span style="font-family:monospace;font-weight:bold">${fmt(netSpent)}/=</span></div>
+        <div class="acc-r"><span>Less: Balances Brought Back:</span><span style="font-variant-numeric:tabular-nums;font-weight:bold">(${fmt(totalBroughtBack)})/=</span></div>
+        <div class="acc-r" style="border-top:1px solid #999;padding-top:3px;margin-top:3px"><span>Net Spent:</span><span style="font-variant-numeric:tabular-nums;font-weight:bold">${fmt(netSpent)}/=</span></div>
       ` : ''}
-      <div class="acc-r" style="border-top:1px solid #000;padding-top:3px;margin-top:3px"><span>Balance Carried Forward:</span><span style="font-family:monospace;font-weight:bold">${fmt(closing)}/=</span></div>
+      <div class="acc-r" style="border-top:1px solid #000;padding-top:3px;margin-top:3px"><span>Balance Carried Forward:</span><span style="font-variant-numeric:tabular-nums;font-weight:bold">${fmt(closing)}/=</span></div>
     </div>
     <div class="sigs">${sigs}</div>
   </body></html>`
@@ -459,18 +459,18 @@ async function buildAbstractPreviewHTML(data) {
     const rowTotal = Object.values(row.splits).reduce((s, v) => s + v, 0)
     const cells = categories.map(c => {
       const amt = row.splits[c.id] || 0
-      return `<td style="border:1px solid #000;padding:1px 3px;text-align:right;font-size:7pt;font-family:monospace">${amt > 0 ? fmt(amt) : ''}</td>`
+      return `<td style="border:1px solid #000;padding:1px 3px;text-align:right;font-size:7pt;font-variant-numeric:tabular-nums">${amt > 0 ? fmt(amt) : ''}</td>`
     }).join('')
-    return `<tr><td style="border:1px solid #000;padding:1px 3px;text-align:center;font-size:7pt;font-weight:bold">${row.voucher_number}</td>${cells}<td style="border:1px solid #000;padding:1px 3px;text-align:right;font-size:7pt;font-family:monospace;font-weight:bold;background:#f8f8f8">${fmt(rowTotal)}</td></tr>`
+    return `<tr><td style="border:1px solid #000;padding:1px 3px;text-align:center;font-size:7pt;font-weight:bold">${row.voucher_number}</td>${cells}<td style="border:1px solid #000;padding:1px 3px;text-align:right;font-size:7pt;font-variant-numeric:tabular-nums;font-weight:bold;background:#f8f8f8">${fmt(rowTotal)}</td></tr>`
   }).join('')
 
   const totalCells = categories.map(c =>
-    `<td style="border:1px solid #000;padding:1px 3px;text-align:right;font-size:7pt;font-family:monospace;font-weight:bold;background:#efefef">${(categoryTotals[c.id]||0)>0?fmt(categoryTotals[c.id]):''}</td>`
+    `<td style="border:1px solid #000;padding:1px 3px;text-align:right;font-size:7pt;font-variant-numeric:tabular-nums;font-weight:bold;background:#efefef">${(categoryTotals[c.id]||0)>0?fmt(categoryTotals[c.id]):''}</td>`
   ).join('')
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
   <style>
-    body{font-family:'Courier New',monospace;font-size:8pt;padding:10px;background:#fff;color:#000}
+    body{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-size:8pt;padding:10px;background:#fff;color:#000}
     h1{font-size:9.5pt;text-align:center;text-transform:uppercase;margin:0}
     h2{font-size:8.5pt;text-align:center;margin:2px 0}
     .sum{text-align:center;font-size:7.5pt;margin:3px 0 6px}
@@ -491,7 +491,7 @@ async function buildAbstractPreviewHTML(data) {
         <tr style="font-weight:bold;background:#efefef">
           <td style="border:1px solid #000;padding:1px 3px;text-align:center;font-size:7pt;border-top:2px solid #000">tt</td>
           ${totalCells}
-          <td style="border:1px solid #000;border-top:2px solid #000;padding:1px 3px;text-align:right;font-size:7.5pt;font-family:monospace;font-weight:bold">${fmt(grandTotal)}</td>
+          <td style="border:1px solid #000;border-top:2px solid #000;padding:1px 3px;text-align:right;font-size:7.5pt;font-variant-numeric:tabular-nums;font-weight:bold">${fmt(grandTotal)}</td>
         </tr>
       </tfoot>
     </table>
@@ -519,7 +519,7 @@ async function buildConsolidatedPreviewHTML(data) {
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
   <style>
-    body{font-family:'Courier New',monospace;font-size:8pt;padding:10px;color:#000;background:#fff}
+    body{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-size:8pt;padding:10px;color:#000;background:#fff}
     h1{font-size:10pt;text-align:center;text-transform:uppercase;margin:0}
     h2{font-size:9pt;text-align:center;margin:2px 0}
     .scope{font-size:8pt;text-align:center;color:#444;margin:2px 0 6px}
@@ -527,7 +527,7 @@ async function buildConsolidatedPreviewHTML(data) {
     th,td{border:1px solid #000;padding:2px 4px;font-size:7.5pt}
     th{background:#e8e8e8;font-weight:bold;text-align:center;line-height:1.15}
     td.n{font-weight:bold}
-    td.m{text-align:right;font-family:monospace}
+    td.m{text-align:right;font-variant-numeric:tabular-nums}
     td.tot{font-weight:bold;background:#f8f8f8}
     tr.totals td{border-top:2px solid #000;background:#efefef;font-weight:bold}
     @media print{@page{size:A4 landscape}}
@@ -567,13 +567,13 @@ async function buildBudgetPreviewHTML(data) {
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
   <style>
-    body{font-family:'Courier New',monospace;font-size:9pt;padding:20px;color:#000;background:#fff}
+    body{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-size:9pt;padding:20px;color:#000;background:#fff}
     h1{font-size:11pt;text-align:center;text-transform:uppercase;margin:0}
     h2{font-size:10pt;text-align:center;margin:4px 0 10px}
     table{width:100%;border-collapse:collapse;margin-top:8px}
     th,td{border:1px solid #000;padding:4px 6px;font-size:9pt}
     th{background:#f0f0f0;font-weight:bold;text-align:center}
-    td.m{text-align:right;font-family:monospace}
+    td.m{text-align:right;font-variant-numeric:tabular-nums}
     tr.tot td{background:#f5f5f5;font-weight:bold;border-top:2px solid #000}
   </style></head><body>
     <h1>${escapeHtml(schoolName)}${location ? ' — ' + escapeHtml(location) : ''}</h1>
@@ -620,7 +620,7 @@ async function buildTrendsPreviewHTML(data) {
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
   <style>
-    body{font-family:'Courier New',monospace;font-size:9pt;padding:20px;color:#000;background:#fff}
+    body{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-size:9pt;padding:20px;color:#000;background:#fff}
     h1{font-size:11pt;text-align:center;text-transform:uppercase;margin:0}
     h2{font-size:10pt;text-align:center;margin:4px 0}
     .scope{font-size:8.5pt;text-align:center;color:#444;margin:2px 0 6px}
@@ -628,7 +628,7 @@ async function buildTrendsPreviewHTML(data) {
     th,td{border:1px solid #000;padding:3px 5px;font-size:8.5pt}
     th{background:#f0f0f0;font-weight:bold;text-align:center}
     td.n{font-weight:bold}
-    td.m{text-align:right;font-family:monospace}
+    td.m{text-align:right;font-variant-numeric:tabular-nums}
     .tot{font-weight:bold;background:#f8f8f8}
     @media print{@page{size:A4 landscape}}
   </style></head><body>
@@ -666,20 +666,20 @@ async function buildSummaryPreviewHTML(data) {
   const utilPct = metrics?.utilization_pct
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
   <style>
-    body{font-family:'Courier New',monospace;font-size:9pt;padding:20px;color:#000;background:#fff}
+    body{font-family:Arial,'Liberation Sans',Helvetica,sans-serif;font-size:9pt;padding:20px;color:#000;background:#fff}
     h1{font-size:11pt;text-align:center;text-transform:uppercase;margin:0}
     h2{font-size:10pt;text-align:center;margin:4px 0}
     .scope{font-size:8.5pt;text-align:center;color:#444;margin:2px 0 10px}
     .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}
     .stat{border:1px solid #000;padding:8px}
     .lbl{font-size:7pt;text-transform:uppercase;color:#444}
-    .val{font-size:11pt;font-weight:bold;font-family:monospace;margin-top:2px}
+    .val{font-size:11pt;font-weight:bold;font-variant-numeric:tabular-nums;margin-top:2px}
     .sub{font-size:7.5pt;color:#666;margin-top:2px}
     h3{font-size:10pt;font-weight:bold;margin:14px 0 4px;text-transform:uppercase;border-bottom:1px solid #000;padding-bottom:2px}
     table{width:100%;border-collapse:collapse}
     th,td{border:1px solid #000;padding:3px 6px;font-size:9pt}
     th{background:#f0f0f0;font-weight:bold;text-align:center}
-    td.m{text-align:right;font-family:monospace}
+    td.m{text-align:right;font-variant-numeric:tabular-nums}
   </style></head><body>
     <h1>${escapeHtml(schoolName)}${location ? ' — ' + escapeHtml(location) : ''}</h1>
     <h2>FINANCIAL SUMMARY</h2>

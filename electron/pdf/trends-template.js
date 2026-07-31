@@ -69,7 +69,7 @@ function buildTrendsHTML(data, school) {
 <html><head><meta charset="UTF-8"/>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family:'Courier New',monospace; font-size:9pt; padding:16mm 14mm; color:#000; background:#fff; }
+  body { font-family:Arial,'Liberation Sans',Helvetica,sans-serif; font-size:9pt; padding:16mm 14mm; color:#000; background:#fff; }
   .header { text-align:center; margin-bottom:8px; }
   .header h1 { font-size:11pt; font-weight:bold; text-transform:uppercase; }
   .header h2 { font-size:10pt; font-weight:bold; margin-top:3px; }
@@ -81,7 +81,7 @@ function buildTrendsHTML(data, school) {
   table { width:100%; border-collapse:collapse; margin-top:8px; }
   th, td { border:1px solid #000; padding:3px 5px; font-size:8.5pt; vertical-align:middle; }
   th { background:#f0f0f0; font-weight:bold; text-align:center; }
-  td.money { text-align:right; font-family:'Courier New',monospace; }
+  td.money { text-align:right; font-variant-numeric:tabular-nums; }
   .total-col { font-weight:bold; background:#f8f8f8 }
   .cat-name { font-weight:bold }
   @media print { @page { size:A4 portrait; margin:16mm 14mm; } body { padding:0; } }

@@ -50,7 +50,7 @@ function buildFinancialSummaryHTML(data, school) {
 <html><head><meta charset="UTF-8"/>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family:'Courier New',monospace; font-size:9pt; padding:16mm 14mm; color:#000; background:#fff; }
+  body { font-family:Arial,'Liberation Sans',Helvetica,sans-serif; font-size:9pt; padding:16mm 14mm; color:#000; background:#fff; }
   .header { text-align:center; margin-bottom:10px; }
   .header h1 { font-size:11pt; font-weight:bold; text-transform:uppercase; }
   .header h2 { font-size:10pt; font-weight:bold; margin-top:3px; }
@@ -58,13 +58,13 @@ function buildFinancialSummaryHTML(data, school) {
   .stats { display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; margin:10px 0; }
   .stat { border:1px solid #000; padding:8px; }
   .stat .lbl { font-size:7pt; text-transform:uppercase; color:#444; margin-bottom:2px }
-  .stat .val { font-size:11pt; font-weight:bold; font-family:'Courier New',monospace }
+  .stat .val { font-size:11pt; font-weight:bold; font-variant-numeric:tabular-nums }
   .stat .sub { font-size:7.5pt; color:#666; margin-top:2px }
   h3 { font-size:10pt; font-weight:bold; margin:14px 0 4px; text-transform:uppercase; border-bottom:1px solid #000; padding-bottom:2px }
   table { width:100%; border-collapse:collapse; }
   th, td { border:1px solid #000; padding:3px 6px; font-size:9pt; }
   th { background:#f0f0f0; font-weight:bold; text-align:center }
-  td.money, td.util { text-align:right; font-family:'Courier New',monospace }
+  td.money, td.util { text-align:right; font-variant-numeric:tabular-nums }
   td.money.over { color:#DC2626; font-weight:bold }
   @media print { @page { size:A4 portrait; margin:16mm 14mm; } body { padding:0; } }
 </style></head>
